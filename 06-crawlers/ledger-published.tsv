@@ -6,3 +6,19 @@
 2026-11-09T06:38:03Z	radicle	psgen	-	failed: no seed reachable
 2026-11-09T06:38:15Z	nostr	psgen	nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen	ok:verified
 2026-11-09T06:38:28Z	arweave	psgen	parts: arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-part1(tx:QX53yNwr4OHD1MGRuw5oHOyvFc86rL8mqtzKakoQoK8) arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-part2(tx:p0OvDijBNx9IOLrQ9m7Fvub466CMiScSpvV53Gyqb7w) arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-part3(tx:5bH152mKvPc7KIBVIXDzMZg7pfxKKbsM1vklYZT2rKE)	ok
+2026-11-09T07:26:45Z	github	psgen-archive	https://github.com/Nemo-010/psgen-archive	ok:verified
+2026-11-09T07:26:49Z	radicle	psgen-archive	-	failed: no seed reachable
+2026-11-09T07:26:58Z	nostr	psgen-archive	nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen-archive	ok:verified
+2026-11-09T07:27:09Z	arweave	psgen-archive	arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-archive	failed: cannot split under the free tier
+2026-11-09T07:27:25Z	github	psgen-archive	https://github.com/Nemo-010/psgen-archive	ok:verified
+2026-11-09T07:27:27Z	radicle	psgen-archive	-	failed: no seed reachable
+2026-11-09T07:27:32Z	nostr	psgen-archive	nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen-archive	ok:verified
+2026-11-09T07:27:34Z	arweave	psgen-archive	arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-archive	failed: cannot split under the free tier
+2026-11-09T07:27:45Z	github	psgen-archive	https://github.com/Nemo-010/psgen-archive	ok:verified
+2026-11-09T07:27:46Z	radicle	psgen-archive	-	failed: no seed reachable
+2026-11-09T07:27:51Z	nostr	psgen-archive	nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen-archive	ok:verified
+2026-11-09T07:28:01Z	arweave	psgen-archive	parts: arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-archive-part2(tx:THMVa6b65ylP8ozx1RANCHXftsute_GzgMiy00d4BXU) arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-archive-part3(tx:8diV-A5Vsu1nN-yH51S9C4Av27AIff4LUPAqtaa953E)	failed: 1 part(s) rejected
+2026-11-09T07:29:14Z	github	psgen	https://github.com/Nemo-010/psgen	ok:verified
+2026-11-09T07:29:16Z	radicle	psgen	-	failed: no seed reachable
+2026-11-09T07:29:18Z	nostr	psgen	nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen	ok:verified
+2026-11-09T07:29:33Z	arweave	psgen	parts: arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-part1(tx:QX53yNwr4OHD1MGRuw5oHOyvFc86rL8mqtzKakoQoK8) arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-part2(tx:p0OvDijBNx9IOLrQ9m7Fvub466CMiScSpvV53Gyqb7w) arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-part3(tx:5bH152mKvPc7KIBVIXDzMZg7pfxKKbsM1vklYZT2rKE)	ok:verified

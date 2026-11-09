@@ -1,0 +1,55 @@
+{
+  "collected": "2026-11-09",
+  "software_heritage": {
+    "github.com/Azathothas/psgen": {
+      "revision": "bf801560509c2ee84cdcb7c35657ecd2d85b058d",
+      "snapshot": "5df0799a2c73db6b29f812d4242cbaa8da9dadf6",
+      "visit": 8
+    },
+    "github.com/Nemo-010/psgen": {
+      "snapshot": "c18ecab07d184e9f42dbb82eba46c8ab6de3a7d7",
+      "visit": 1,
+      "refs": [
+        "refs/heads/main",
+        "refs/heads/qa/verified-fixes",
+        "refs/tags/v0.0.1-beta.1"
+      ]
+    }
+  },
+  "github": {
+    "fork": "https://github.com/Nemo-010/psgen",
+    "archive_repo": "https://github.com/Nemo-010/psgen-archive",
+    "pr": "https://github.com/Azathothas/psgen/pull/29"
+  },
+  "nostr": {
+    "npub": "npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr",
+    "psgen": "nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen",
+    "psgen_archive": "nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen-archive",
+    "verified": true
+  },
+  "arweave": {
+    "wallet": "nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I",
+    "psgen_parts": [
+      "QX53yNwr4OHD1MGRuw5oHOyvFc86rL8mqtzKakoQoK8",
+      "p0OvDijBNx9IOLrQ9m7Fvub466CMiScSpvV53Gyqb7w",
+      "5bH152mKvPc7KIBVIXDzMZg7pfxKKbsM1vklYZT2rKE"
+    ],
+    "verified": true
+  },
+  "radicle": {
+    "published": false,
+    "reason": "raw TCP (port 8776) denied by the sandbox; no seed reachable"
+  },
+  "wayback": {
+    "unique_urls": 115,
+    "confirmed": 92,
+    "api": "70/71",
+    "raw": "22/22",
+    "html": "0/22",
+    "html_note": "Save Page Now's own fetcher gets 404 from github.com HTML pages; raw and api save fine"
+  },
+  "arquivo_pt": {
+    "submitted": 39,
+    "accepted": 39
+  }
+}

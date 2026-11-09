@@ -93,8 +93,9 @@ people's seeds, so nothing was uploaded.
 
 ### Wayback, the one partial lane
 
-35 of 58 URLs confirmed. The 23 that are not are all `github.com/<owner>/<repo>`
-**HTML** pages (repo root, issues, the release page, PR #29). Save Page Now is
+92 of 115 URLs confirmed — **every API document (70/71) and every source file
+(22/22)**. The 23 that are not are all `github.com/<owner>/<repo>` **HTML** pages
+(repo root, issues, the release page, PR #29). Save Page Now is
 internally fetching them and getting a 404 — its own error page says
 `The target server cannot find https://github.com/Azathothas/psgen (HTTP
 status=404)` — while the same URL returns 200 to a normal user agent from here,
@@ -104,7 +105,7 @@ not something the tool or the repo can fix.
 The content those pages would have shown is archived anyway:
 
 - **issue and PR bodies, comments, metadata** — in `02-issues-prs/` and on
-  Wayback as the `api.github.com` JSON documents (which do save);
+  Wayback as the `api.github.com` JSON documents, 70 of 71 confirmed;
 - **every source file** — on Wayback as `raw.githubusercontent.com` (17 confirmed);
 - **the release page** — its assets are in `03-release-assets/` and accepted by
   Arquivo.pt;
