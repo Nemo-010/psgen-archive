@@ -9,7 +9,8 @@ Collected 2026-11-09 with [ghless](https://github.com/Nemo-010/ghless).
 | Directory | Contents |
 | --- | --- |
 | `01-source/` | git bundles (full history, upstream base, changes), patch series, `head.tar.gz`, Software Heritage request record, recovery notes |
-| `02-issues-prs/` | `ghre-snapshot/` — every issue and PR as JSON plus a readable `.md`, with comments; `pr29/` — the raw API documents for PR #29 (commits, files, reviews, events) |
+| `02a1-issues-1-14/`, `02a2-issues-15-28/` | every issue as JSON plus a readable `.md`, with comments (split in two so each fits an Arweave part) |
+| `02b-prs/` | PR #29 — the ghre rendition plus the raw API documents (commits, files, reviews, events) |
 | `03-release-assets/` | all 14 release binaries and tarballs for `v0.0.1-beta.1`, plus `SHA256SUMS` (all verified OK) |
 | `04-qa-report/` | the third-round QA report, the triage matrix, and the 15 issue bodies as filed |
 | `05-archive-bundle/` | the bundles and patch series again, at the top level of the dossier, so a single `git clone` recovers the work |
@@ -48,7 +49,7 @@ cd ../03-release-assets && sha256sum -c SHA256SUMS
 | --- | --- |
 | code, all history, both branches, tag | Software Heritage, Arweave, Nostr, GitHub fork, `01-source/` |
 | release binaries, 7 targets | `03-release-assets/`, archived on Wayback and Arquivo.pt |
-| 28 issues + every comment | `02-issues-prs/`, Nostr (via the published repo), Wayback (API JSON) |
+| 28 issues + every comment | `02a1-*`/`02a2-*`/`02b-prs/`, Nostr (via the published repo), Wayback (API JSON) |
 | PR #29 (body, 10 commits, 15 files) | `02-issues-prs/pr29/`, Wayback (API JSON), Nostr |
 | QA report and issue texts | `04-qa-report/`, `01-source/full.bundle` |
 | Wayback | 35 URLs confirmed; github.com HTML pages refused by IA (see below) |
@@ -104,7 +105,7 @@ not something the tool or the repo can fix.
 
 The content those pages would have shown is archived anyway:
 
-- **issue and PR bodies, comments, metadata** — in `02-issues-prs/` and on
+- **issue and PR bodies, comments, metadata** — in `02a1-*`/`02a2-*`/`02b-prs/` and on
   Wayback as the `api.github.com` JSON documents, 70 of 71 confirmed;
 - **every source file** — on Wayback as `raw.githubusercontent.com` (17 confirmed);
 - **the release page** — its assets are in `03-release-assets/` and accepted by
