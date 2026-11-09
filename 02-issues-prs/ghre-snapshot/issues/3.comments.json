@@ -1,0 +1,49 @@
+[
+  {
+    "url": "https://api.github.com/repos/Azathothas/psgen/issues/comments/6731611678",
+    "html_url": "https://github.com/Azathothas/psgen/issues/3#issuecomment-6731611678",
+    "issue_url": "https://api.github.com/repos/Azathothas/psgen/issues/3",
+    "id": 6731611678,
+    "node_id": "IC_kwDOVm5QNM8AAAABkTw-Hg",
+    "user": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "created_at": "2026-11-09T03:35:45Z",
+    "updated_at": "2026-11-09T03:35:45Z",
+    "body": "3a, 3b and 3c all reproduce here on `bf80156`; 3d needs a process with a 7+ digit VSZ, which this cage cannot create (no CAP_SYS_RESOURCE for a large mapping), so it stays code-read for me.\n\n3a \u2014 the newline case, with `python3 -c` argv containing `\\n`, `\\t` and `\\x01`:\n\n```\n$ psgen table --live | grep -A2 line1\n966         3191  0.0  0.0  20484  9128 ?        S    02:21   0:00 /usr/bin/python3 -c import time;time.sleep(20) line1\nline2 tab\there ctl\n$ ps -eo pid,args | grep line1\n   3191 /usr/bin/python3 -c import time;time.sleep(20) line1 line2 tab?here ?ctl\n```\n\n3b \u2014 a zombie renders without `<defunct>`:\n\n```\n$ ps -o pid,stat,args -p 426 --no-headers\n    426 Zs   [postgres] <defunct>\n$ psgen table --live | awk '$2==426'\n966          426  0.0  0.0      0     0 ?        Zs   02:14   0:00 [postgres]\n```\n\n3c \u2014 `inject --table` order: `3254 3252 3249 3253 3250 3251` on a 6-row run (out of order 5 runs out of 5). Your one-line `rows.sort_unstable_by_key(|p| p.pid)` in `live::read_pids` fixes it; sorting at the `--table` call site also works.\n\nThree `tests/invariants.py` additions would catch these: compare `table --live` offsets against `ps aux` for a wide-VSZ row, assert `<defunct>` for a `/proc/PID/stat` state of `Z`, and assert `inject --table` PIDs are ascending. 3c is fixed on the branch `qa/verified-fixes` in `Nemo-010/psgen`; 3a/3b/3d are not touched by it.",
+    "author_association": "NONE",
+    "pin": null,
+    "reactions": {
+      "url": "https://api.github.com/repos/Azathothas/psgen/issues/comments/6731611678/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "performed_via_github_app": null,
+    "minimized": null
+  }
+]

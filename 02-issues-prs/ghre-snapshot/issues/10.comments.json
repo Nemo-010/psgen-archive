@@ -1,0 +1,49 @@
+[
+  {
+    "url": "https://api.github.com/repos/Azathothas/psgen/issues/comments/6731671302",
+    "html_url": "https://github.com/Azathothas/psgen/issues/10#issuecomment-6731671302",
+    "issue_url": "https://api.github.com/repos/Azathothas/psgen/issues/10",
+    "id": 6731671302,
+    "node_id": "IC_kwDOVm5QNM8AAAABkT0nBg",
+    "user": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "created_at": "2026-11-09T03:40:37Z",
+    "updated_at": "2026-11-09T03:40:37Z",
+    "body": "Reproduced, and the numbers here are the same shape (this cage has 12 vCPU, so slightly faster):\n\n| command | median of 7 |\n|---|---:|\n| `list` (181) | 1.22 ms |\n| `list -n 500` | 2.57 ms |\n| `list -n 1000` | 5.83 ms |\n| `list -n 2000` | 14.29 ms |\n| `table -n 5000` | 56.26 ms |\n\n1000 \u2192 2000 multiplies by 2.45, which is the quadratic scan. A sorted `Vec` + `binary_search` keeps the crate hash-free and makes the failure mode impossible; a `HashSet<Vec<u8>>` is the other option if the extra allocation is acceptable at 2000 entries.\n\nOne thing to check when you land it: `gen_list` also uses `seen` for the `--no-uniq` path, where `push` skips the check entirely. Keeping `seen` sorted only on the `uniq` branch is enough, but the insert has to stay O(log n) + memmove, which at 2000 entries is still ~2 ms of memmove worst case \u2014 the `HashSet` may actually win at the cap. Not addressed on `qa/verified-fixes` in `Nemo-010/psgen`.",
+    "author_association": "NONE",
+    "pin": null,
+    "reactions": {
+      "url": "https://api.github.com/repos/Azathothas/psgen/issues/comments/6731671302/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "performed_via_github_app": null,
+    "minimized": null
+  }
+]

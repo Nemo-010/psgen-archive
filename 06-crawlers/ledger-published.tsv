@@ -1,0 +1,8 @@
+2026-11-09T06:36:48Z	swh	psgen	https://github.com/Azathothas/psgen	ok:200
+2026-11-09T06:36:55Z	wayback	psgen	https://github.com/Azathothas/psgen	http-523:
+2026-11-09T06:36:55Z	ghre-snap	psgen	Azathothas/psgen	running: 0 objects so far; it keeps going after this command. Re-run 'ghless archive --wait' to collect it
+2026-11-09T06:36:55Z	archive	psgen	/workspace/tools/ghless-data/archive/psgen-20261109T063647Z.zip	ok
+2026-11-09T06:37:56Z	github	psgen	https://github.com/Nemo-010/psgen	ok:verified
+2026-11-09T06:38:03Z	radicle	psgen	-	failed: no seed reachable
+2026-11-09T06:38:15Z	nostr	psgen	nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen	ok:verified
+2026-11-09T06:38:28Z	arweave	psgen	parts: arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-part1(tx:QX53yNwr4OHD1MGRuw5oHOyvFc86rL8mqtzKakoQoK8) arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-part2(tx:p0OvDijBNx9IOLrQ9m7Fvub466CMiScSpvV53Gyqb7w) arweave://nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I/psgen-part3(tx:5bH152mKvPc7KIBVIXDzMZg7pfxKKbsM1vklYZT2rKE)	ok

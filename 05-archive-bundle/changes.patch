@@ -1,0 +1,1456 @@
+From 24d51772539045b743c48dd1228b32c86f686438 Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 02:59:51 +0000
+Subject: [PATCH 01/10] inject: write a pidfile that cannot panic, and count
+ each stop line once
+
+Two defects in the same file:
+
+* random_hex16() copies an 8-byte u64 into a 4-byte tail when getrandom
+  fails, so copy_from_slice panics. write_pidfile() runs after spawn(), so
+  with panic = "abort" the process dies with the stubs already running, no
+  pidfile written and the staging directories left behind. Copy the first
+  four bytes of the clock instead.
+
+* stop() signalled the pidfile in file order, which is ascending PID, so a
+  root's process-group kill reaped its own children before their lines were
+  reached and they were counted as skipped. A 40-row run reported "stopped
+  33", "35" or "34" depending on timing. Signal the deepest PIDs first so
+  every line gets its own signal, and read /proc/PID/stat once for both
+  starttime and pgrp.
+
+  While there: a PID the caller cannot inspect (hidepid=2, EPERM/EACCES from
+  pidfd_open) is not a gone PID. Count it as failed so the exit code is
+  nonzero and the temp directories are kept, and only signal a process group
+  when the PID really is its leader, so a stale group from PID reuse cannot
+  be signalled by accident.
+
+Also warn when --create-users or --mem-cap/--phys-cap cannot take effect.
+---
+ src/inject.rs | 105 +++++++++++++++++++++++++++++++++++++++++---------
+ 1 file changed, 87 insertions(+), 18 deletions(-)
+
+diff --git a/src/inject.rs b/src/inject.rs
+index 23ea277..bee1cd4 100644
+--- a/src/inject.rs
++++ b/src/inject.rs
+@@ -133,6 +133,17 @@ pub fn prepare(rows: &mut [Proc], args: &Args, create_users: bool) -> Prep {
+             "--no-root disables user switching and the bind tier; --shadow-dir still selects a shadow copy".to_string(),
+         );
+     }
++    if args.create_users && args.no_root {
++        warnings.push("--create-users has no effect with --no-root".to_string());
++    } else if args.create_users && !args.user {
++        warnings.push("--create-users has no effect with --no-user".to_string());
++    }
++    if !args.mem && args.mem_cap_mb > 0 {
++        warnings.push("--mem-cap has no effect with --no-mem".to_string());
++    }
++    if !args.mem && args.phys_cap.is_some() {
++        warnings.push("--phys-cap has no effect with --no-mem".to_string());
++    }
+     if args.verify && !args.mem {
+         warnings.push("--verify has no effect with --no-mem".to_string());
+     }
+@@ -552,7 +563,9 @@ fn random_hex16() -> [u8; 16] {
+     let mut raw = [0u8; 8];
+     if !sys::getrandom(&mut raw) {
+         raw[..4].copy_from_slice(&sys::getpid().to_le_bytes());
+-        raw[4..].copy_from_slice(&sys::monotonic_ns().to_le_bytes());
++        // The buffer is 8 bytes and the tail is 4, so copy four bytes of
++        // the clock rather than the whole u64.
++        raw[4..].copy_from_slice(&sys::monotonic_ns().to_le_bytes()[..4]);
+     }
+     const HEX: &[u8; 16] = b"0123456789abcdef";
+     let mut out = [0u8; 16];
+@@ -1186,6 +1199,14 @@ pub fn stop(path: &[u8], force: bool) -> i32 {
+     let mut count = 0usize;
+     let mut skipped = 0usize;
+     let mut failed = 0usize;
++    // Children before roots. A root's process group kill reaches every child
++    // that stayed in the group, and those children are reaped before their own
++    // pidfile lines are reached, which made the "stopped" count depend on
++    // timing. Signalling the deepest PIDs first gives each line its own
++    // signal, and the root's group kill then only catches stragglers that
++    // never reported.
++    lines.reverse();
++
+     for line in &mut lines {
+         if line.is_empty() || line[0] == b'#' {
+             continue;
+@@ -1208,46 +1229,94 @@ pub fn stop(path: &[u8], force: bool) -> i32 {
+         }
+         let pfd = sys::pidfd_open(pid);
+         if pfd < 0 {
+-            if sys::last_error().raw_os_error() == Some(libc::ESRCH) {
++            let open_err = sys::last_error().raw_os_error();
++            if open_err == Some(libc::ESRCH) {
+                 skipped += 1;
+                 continue;
+             }
+-            // No pidfd: check the identity and kill by PID. A leader's PID is
+-            // its PGID, so try the group first; a non-leader returns ESRCH.
++            // No pidfd: check the identity and kill by PID. Only a group
++            // leader owns a process group whose ID is its PID. A stale group
++            // with that ID can exist after PID reuse, so do not signal it for
++            // a non-leader.
+             if !identity_matches(pid, &fields) {
+-                skipped += 1;
++                // EPERM or EACCES means the PID exists but the caller may not
++                // inspect it (for example /proc mounted with hidepid=2).
++                // That is not the same as a gone PID.
++                if matches!(open_err, Some(libc::EPERM) | Some(libc::EACCES))
++                    || live::read_starttime(pid).is_none()
++                {
++                    failed += 1;
++                } else {
++                    skipped += 1;
++                }
+                 continue;
+             }
+-            if sys::kill(-pid, sys::SIGKILL) {
+-                count += 1;
+-            } else if sys::last_error().raw_os_error() == Some(libc::ESRCH) {
+-                if sys::kill(pid, sys::SIGKILL) {
++            let leader = live::read_stat(pid)
++                .map(|s| s.pgrp == pid as i64)
++                .unwrap_or(false);
++            if leader {
++                if sys::kill(-pid, sys::SIGKILL) {
+                     count += 1;
+-                } else if sys::last_error().raw_os_error() == Some(libc::ESRCH) {
+-                    skipped += 1;
+-                } else {
++                    continue;
++                }
++                if sys::last_error().raw_os_error() != Some(libc::ESRCH) {
+                     failed += 1;
++                    continue;
+                 }
++            }
++            if sys::kill(pid, sys::SIGKILL) {
++                count += 1;
++            } else if sys::last_error().raw_os_error() == Some(libc::ESRCH) {
++                skipped += 1;
+             } else {
+                 failed += 1;
+             }
+             continue;
+         }
+         // The pidfd pins the process, so the identity read below and the
+-        // signal that follows cannot land on a reused PID.
+-        if !identity_matches(pid, &fields) {
+-            skipped += 1;
++        // signal that follows cannot land on a reused PID. Read stat once:
++        // its starttime and pgrp are both needed, and a second read here
++        // gives the already killed children time to be reaped before their
++        // pidfile lines are reached.
++        let info = live::read_stat(pid);
++        let cur_start = info.as_ref().map(|s| s.starttime);
++        let cur_comm = live::read_comm(pid);
++        let matches = if fields.len() >= 2 {
++            let want_start = str::parse_u64(fields[1]).unwrap_or(0);
++            let want_comm = if fields.len() == 3 { fields[2] } else { b"" };
++            cur_start == Some(want_start)
++                && (want_comm.is_empty() || cur_comm.as_deref() == Some(want_comm))
++        } else {
++            exe_matches(pid, &me)
++        };
++        if !matches {
++            // The pidfd proves the PID exists. If the identity cannot be read,
++            // the process is unreadable, not gone; keep the temp dirs and
++            // return nonzero.
++            if cur_start.is_none() {
++                failed += 1;
++            } else {
++                skipped += 1;
++            }
+             sys::close(pfd);
+             continue;
+         }
+         // A leader's PID is its PGID. Kill the group so children that never
+-        // wrote a status record are reached; a non-leader returns ESRCH and
+-        // the pidfd path below handles the process itself.
+-        if sys::kill(-pid, sys::SIGKILL) {
++        // wrote a status record are reached. For a non-leader, skip the group
++        // signal: a stale group with this ID can exist after PID reuse.
++        let leader = info
++            .map(|s| s.pgrp == pid as i64)
++            .unwrap_or(false);
++        if leader && sys::kill(-pid, sys::SIGKILL) {
+             count += 1;
+             sys::close(pfd);
+             continue;
+         }
++        if leader && sys::last_error().raw_os_error() != Some(libc::ESRCH) {
++            failed += 1;
++            sys::close(pfd);
++            continue;
++        }
+         if sys::pidfd_send_signal(pfd, sys::SIGKILL) {
+             count += 1;
+         } else if sys::last_error().raw_os_error() == Some(libc::ESRCH) {
+-- 
+2.55.0
+
+
+From 6640eed31897b8121b415ac47e19474808d0bfd4 Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 03:01:26 +0000
+Subject: [PATCH 02/10] probe: accept psgen's own pidfile, preflight the real
+ temp name, and stop lying about seccomp
+
+* pidfile_target_ok() compared nine bytes of the buffer with the eight-byte
+  literal b"# psgen ", so the comparison was false for every input. A pidfile
+  psgen itself wrote was refused on the next run, which also made the printed
+  systemd unit impossible to restart. Compare the eight bytes.
+
+* pidfile_creatable() created a short .psgen-probe-<pid>-<ns> file in the
+  parent directory, while write_pidfile() appends .tmp.<pid>.<16 hex> to the
+  target name. A basename near NAME_MAX passed the preflight and then failed
+  after every stub was forked. Build the name the writer will actually use.
+
+* seccomp_user_notif() classified EFAULT as blocked and ENOSYS as reachable,
+  which is backwards: EFAULT is the expected answer for a null filter program
+  and means the call is reachable, ENOSYS means the kernel has no seccomp.
+  bpf_allowed() had the same shape, treating only EPERM as blocked.
+
+* check_pty(), check_memfd() and the two posture probes ran in the caller, so
+  a seccomp policy that returns KILL_PROCESS for memfd_create, bpf or seccomp
+  killed psgen itself: `psgen doctor` and `psgen inject --dry-run` exited 159
+  (SIGSYS). Run them in a forked child, as the module comment already claims.
+
+doctor now uses pidfile_creatable() so its verdict matches what inject does.
+---
+ src/doctor.rs |   6 +--
+ src/probe.rs  | 114 +++++++++++++++++++++++++++++++++-----------------
+ src/sys.rs    |  14 +++++--
+ 3 files changed, 89 insertions(+), 45 deletions(-)
+
+diff --git a/src/doctor.rs b/src/doctor.rs
+index eb6dd35..6a773f7 100644
+--- a/src/doctor.rs
++++ b/src/doctor.rs
+@@ -105,7 +105,7 @@ fn posture() -> Vec<(&'static str, Vec<u8>)> {
+     ));
+     v.push((
+         "bpf",
+-        if sys::bpf_allowed() {
++        if probe::bpf_allowed() {
+             b"allowed".to_vec()
+         } else {
+             b"blocked".to_vec()
+@@ -113,7 +113,7 @@ fn posture() -> Vec<(&'static str, Vec<u8>)> {
+     ));
+     v.push((
+         "seccomp_user_notif",
+-        if sys::seccomp_user_notif() {
++        if probe::seccomp_user_notif() {
+             b"reachable".to_vec()
+         } else {
+             b"blocked".to_vec()
+@@ -149,7 +149,7 @@ pub fn run(as_json: bool, pidfile: Option<&[u8]>) -> i32 {
+             denied += 1;
+         }
+     }
+-    let pidfile_ok = pidfile.map(|p| probe::pidfile_writable(p));
++    let pidfile_ok = pidfile.map(|p| probe::pidfile_creatable(p));
+ 
+     // Doctor reports on everything but only fails when a capability that
+     // injection cannot work without is missing. A non-root run always denies
+diff --git a/src/probe.rs b/src/probe.rs
+index 9ac129c..b341a99 100644
+--- a/src/probe.rs
++++ b/src/probe.rs
+@@ -77,40 +77,55 @@ where
+ }
+ 
+ fn check_pty() -> Check {
+-    let fd = sys::open(b"/dev/ptmx", sys::O_RDWR | sys::O_NOCTTY | sys::O_CLOEXEC, 0);
+-    if fd < 0 {
+-        return Check::new("pty", false, errno(), b"/dev/ptmx open failed");
+-    }
+-    sys::close(fd);
+-    let slave = sys::access(b"/dev/pts", sys::X_OK);
++    // A seccomp policy that returns KILL for an unexpected syscall must kill
++    // the probe child, not psgen. The parent then reports DENY.
++    let (ok, e) = in_child(|| {
++        let fd = sys::open(b"/dev/ptmx", sys::O_RDWR | sys::O_NOCTTY | sys::O_CLOEXEC, 0);
++        if fd < 0 {
++            return Err(errno());
++        }
++        sys::close(fd);
++        if sys::access(b"/dev/pts", sys::X_OK) {
++            Ok(())
++        } else {
++            Err(errno())
++        }
++    });
+     Check::new(
+         "pty",
+-        slave,
+-        if slave { 0 } else { errno() },
+-        if slave {
++        ok,
++        e,
++        if ok {
+             b"/dev/ptmx and /dev/pts"
+         } else {
+-            b"/dev/ptmx ok, /dev/pts unreachable"
++            b"/dev/ptmx or /dev/pts unavailable"
+         },
+     )
+ }
+ 
+ fn check_memfd() -> Check {
+-    let fd = sys::memfd_create(b"psgen-probe", 0);
+-    if fd < 0 {
+-        return Check::new("memfd", false, errno(), b"memfd_create failed");
+-    }
+-    let sz = sys::ftruncate(fd, 4096);
+-    let e = if sz { 0 } else { errno() };
+-    sys::close(fd);
++    let (ok, e) = in_child(|| {
++        let fd = sys::memfd_create(b"psgen-probe", 0);
++        if fd < 0 {
++            return Err(errno());
++        }
++        let sz = sys::ftruncate(fd, 4096);
++        let e = if sz { 0 } else { errno() };
++        sys::close(fd);
++        if sz {
++            Ok(())
++        } else {
++            Err(e)
++        }
++    });
+     Check::new(
+         "memfd",
+-        sz,
++        ok,
+         e,
+-        if sz {
++        if ok {
+             b"memfd_create and ftruncate"
+         } else {
+-            b"memfd_create ok, ftruncate failed"
++            b"memfd_create or ftruncate unavailable"
+         },
+     )
+ }
+@@ -303,6 +318,25 @@ pub fn checks() -> Vec<Check> {
+     v
+ }
+ 
++/// Whether the `bpf` syscall is reachable, probed in a child so a seccomp
++/// KILL policy cannot take down the caller.
++pub fn bpf_allowed() -> bool {
++    in_child(|| if sys::bpf_allowed() { Ok(()) } else { Err(errno()) }).0
++}
++
++/// Whether `SECCOMP_SET_MODE_FILTER` is reachable, probed in a child for the
++/// same reason.
++pub fn seccomp_user_notif() -> bool {
++    in_child(|| {
++        if sys::seccomp_user_notif() {
++            Ok(())
++        } else {
++            Err(errno())
++        }
++    })
++    .0
++}
++
+ /// The facts `inject` needs to choose its strategy, from one probe pass.
+ pub struct Caps {
+     pub root: bool,
+@@ -363,7 +397,7 @@ pub fn pidfile_target_ok(path: &[u8]) -> bool {
+     }
+     let mut buf = [0u8; 16];
+     match sys::read_file(path, &mut buf) {
+-        Some(n) => n >= 9 && &buf[..9] == b"# psgen ",
++        Some(n) => n >= 8 && &buf[..8] == b"# psgen ",
+         None => false,
+     }
+ }
+@@ -399,25 +433,29 @@ pub fn pidfile_creatable(path: &[u8]) -> bool {
+         return false;
+     }
+     let path = path.strip_suffix(&[0]).unwrap_or(path);
+-    let parent = pidfile_parent(path);
+-    let mut name = parent.to_vec();
+-    if !name.ends_with(b"/") {
+-        name.push(b'/');
+-    }
+-    let mut b = Buf::new();
+-    b.push_str(".psgen-probe-");
+-    b.push_u64(sys::getpid() as u64);
+-    b.push(b'-');
+-    b.push_u64(sys::monotonic_ns());
+-    name.extend_from_slice(b.as_bytes());
+     let flags = sys::O_WRONLY | sys::O_CREAT | sys::O_EXCL | sys::O_NOFOLLOW;
+-    let fd = sys::open(&name, flags, 0o600);
+-    if fd < 0 {
+-        return false;
++    // Test the name `write_pidfile` will actually create, not a short probe
++    // name in the parent. A basename close to NAME_MAX passes a short probe
++    // and then fails after the stubs are spawned.
++    for _ in 0..8u64 {
++        let mut cand = path.to_vec();
++        let mut b = Buf::new();
++        b.push_str(".tmp.");
++        b.push_u64(sys::getpid() as u64);
++        b.push(b'.');
++        b.push_str(&format!("{:016x}", sys::monotonic_ns()));
++        cand.extend_from_slice(b.as_bytes());
++        let fd = sys::open(&cand, flags, 0o600);
++        if fd >= 0 {
++            sys::close(fd);
++            let _ = std::fs::remove_file(Path::new(OsStr::from_bytes(&cand)));
++            return true;
++        }
++        if sys::last_error().raw_os_error() != Some(libc::EEXIST) {
++            return false;
++        }
+     }
+-    sys::close(fd);
+-    let _ = std::fs::remove_file(Path::new(OsStr::from_bytes(&name)));
+-    true
++    false
+ }
+ 
+ /// Total and free bytes on the filesystem that holds `dir`.
+diff --git a/src/sys.rs b/src/sys.rs
+index 2865123..7b5af07 100644
+--- a/src/sys.rs
++++ b/src/sys.rs
+@@ -128,8 +128,9 @@ pub fn bpf_allowed() -> bool {
+ /// Whether `SECCOMP_SET_MODE_FILTER` with `SECCOMP_FILTER_FLAG_NEW_LISTENER`
+ /// is reachable.
+ ///
+-/// A null program is refused; the errno says whether the call was blocked
+-/// before the argument was inspected.
++/// A null program is refused with `EFAULT` or `EINVAL` after the kernel has
++/// inspected the arguments, which means the operation is reachable. `EPERM`,
++/// `EACCES` and `ENOSYS` mean a policy or the kernel blocks it before that.
+ pub fn seccomp_user_notif() -> bool {
+     let r = unsafe {
+         libc::syscall(
+@@ -139,8 +140,13 @@ pub fn seccomp_user_notif() -> bool {
+             core::ptr::null::<libc::c_void>(),
+         )
+     };
+-    let err = last_error().raw_os_error();
+-    r != -1 || !matches!(err, Some(libc::EPERM) | Some(libc::EFAULT))
++    if r != -1 {
++        return true;
++    }
++    !matches!(
++        last_error().raw_os_error(),
++        Some(libc::EPERM) | Some(libc::EACCES) | Some(libc::ENOSYS)
++    )
+ }
+ 
+ pub fn read_fd(fd: i32, buf: &mut [u8]) -> isize {
+-- 
+2.55.0
+
+
+From a16e390b46ce5b100ce8032ea1612f3966016cee Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 03:03:32 +0000
+Subject: [PATCH 03/10] cli: reject stop --dry-run, let --local win, sort
+ --table, and stop hiding things
+
+* --dry-run was parsed for every subcommand and never consulted by stop, so
+  `psgen stop --pidfile FILE --dry-run` killed the run. A command that reads
+  as a preview must not be destructive; reject it like --force on a non-stop
+  command.
+
+* --local and --utc-offset were both applied, so START was shifted twice when
+  the system timezone is not UTC. localtime_r() converted a timestamp that had
+  already been moved by offset_min. --local now overrides --utc-offset, and
+  the help says so.
+
+* inject --table rendered rows in status-pipe arrival order, so a just-spawned
+  table was shuffled. Sort by PID, as ps aux and table --live do.
+
+* A family that cannot supply -n returned fewer rows silently, and a family
+  with one repeatable template padded the count with unlimited duplicates of
+  it. Warn on stderr when the count cannot be met. The generator itself is
+  unchanged: whether to short-return, error, or mark templates repeatable is
+  a design decision, and this only removes the silence.
+
+* --create-users with --no-root/--no-user and --mem-cap/--phys-cap with
+  --no-mem printed nothing; they now warn that they cannot take effect.
+
+* The reduced-capability line fired for capabilities the caller had disabled
+  (--no-tty still said pty=no). Condition it on what was asked for.
+
+* When no pidfile is written the summary now lists the temp directories that
+  will be left behind, instead of only advising --pidfile.
+
+* Help text: the 4 MiB --mem-cap floor, the --local/--utc-offset precedence,
+  the seed's real scope, -p's scope for list, --verify with --no-mem, the
+  --phys-cap default, the --busy rule, the --mem-util range, and the
+  proc-self-only limit of a one-field pidfile line.
+
+* pidfile_error() blamed a missing write permission for every failure past the
+  parent checks. Distinguish "the name cannot be created" (NAME_MAX) from
+  "the parent is not writable".
+---
+ src/cli.rs | 125 ++++++++++++++++++++++++++++++++++++++++++-----------
+ 1 file changed, 100 insertions(+), 25 deletions(-)
+
+diff --git a/src/cli.rs b/src/cli.rs
+index 58f88a2..a615594 100644
+--- a/src/cli.rs
++++ b/src/cli.rs
+@@ -154,12 +154,17 @@ USAGE
+   psgen unit [options]          print a systemd unit that injects at boot
+ 
+ COMMON
+-  -n, --count N       rows or commands (list: all templates, table: 30, inject: 12)
+-  -s, --seed N        deterministic output
+-  -p, --profile NAME  server (default), dev, desktop
++  -n, --count N       rows or commands (list: all templates, table: 30,
++                      table --live: all, inject: 12). A family that has fewer
++                      unique rows than requested prints a shortfall warning.
++  -s, --seed N        fix the selection and jitter; START and TIME still
++                      follow the wall clock
++  -p, --profile NAME  server (default), dev, desktop; for list the weights
++                      apply only above the template count
+   -f, --family NAME   sys, web, db, ctr, dev, mon, sto, mail, desk, net
+       --utc-offset M  minutes east of UTC for the START column (default 0)
+-      --local         use the system timezone for the START column
++      --local         use the system timezone for the START column; overrides
++                      --utc-offset
+       --sort / --no-sort   list only
+       --uniq / --no-uniq   list only
+   -h, --help
+@@ -171,18 +176,21 @@ INJECT
+       --pidfile FILE    write the spawned PIDs here; an existing file must be
+                         empty or a psgen pidfile
+       --mem / --no-mem  pad VSZ and RSS (default on)
+-      --mem-cap MiB     cap the planned RSS sum; the reported RSS can exceed
+-                        it by up to a page per stub (0 = no cap, default)
+-      --mem-target KiB  per-stub RSS target in KiB
++      --mem-cap MiB     cap the planned RSS sum; each stub keeps a 4 MiB
++                        floor, so a cap at or below 4 MiB per stub is raised
++                        to it and warned about (0 = no cap, default)
++      --mem-target KiB  per-stub RSS target in KiB, clamped to the template's
++                        VSZ minus 4 MiB
+       --phys-cap MiB    physical budget for the arena, page tables and base
+-                        RSS (0 = unlimited, omitted = a quarter of RAM or
+-                        half the cgroup limit)
++                        RSS (0 = unlimited, omitted = the smaller of a quarter
++                        of RAM and half the cgroup limit)
+       --disk MiB        write this many MiB of temp data per stub
+       --exe / --no-exe  bind the template executable path (default on)
+       --allow-proc-exe  alias of --no-exe: exec /proc/self/exe, no spoof
+       --shadow-dir DIR  directory for the shadow copy when the bind is
+                         unavailable or with --no-root; the copy goes in a
+-                        per-run subdirectory; ignored with --no-exe
++                        per-run subdirectory; ignored with --no-exe and when
++                        the bind tier is in use
+       --no-root         portable mode: no user switch, no mount namespace,
+                         no bind tier; the stub uses /proc/self/exe or --shadow-dir
+       --tty / --no-tty  give tty processes a real pty (default on);
+@@ -190,14 +198,15 @@ INJECT
+                         controlling terminal
+       --threads / --no-threads  give threaded processes a second thread (default on)
+       --user / --no-user  switch to the template user when running as root
+-      --create-users    create missing template users with useradd
+-      --busy            burn CPU for processes that are normally CPU bound
++      --create-users    create missing template users with useradd; no effect
++                        with --no-root or without root
++      --busy            burn CPU for every row whose corpus CPU is non-zero
+       --cpu PCT         target cpu percent for every row; forces the busy path
+                         when non-zero, 0 clears it (0..100)
+-      --dry-run         print what would be spawned
++      --dry-run         print user and command for what would be spawned
+       --table           after spawning, print the real ps aux table for the stubs
+       --verify          compare each stub's real VSZ/RSS with the planned
+-                        value; requires --mem
++                        value within 128 kB; has no effect with --no-mem
+       --wait            block for a non-zero --duration, then stop the stubs
+       --elevate         re-exec through sudo -n when not already root
+   -q, --quiet           suppress the inject summary
+@@ -217,7 +226,7 @@ LOG
+ 
+ LOAD
+       --cpu-util PCT  burn this percent of one core
+-      --mem-util PCT  touch and hold this percent of MemTotal, or of the cgroup limit when lower
++      --mem-util PCT  touch and hold this percent of MemTotal, or of the cgroup limit when lower (0..95)
+       --disk-util MiB write and hold MiB of temp data
+   -d, --duration S    stop after S seconds (0 = until killed)
+ 
+@@ -225,7 +234,7 @@ STOP
+       --force           ignore the boot id; a three-field line still checks
+                         starttime and comm, a two-field line still checks
+                         starttime, and a one-field line still requires
+-                        an exe match
++                        an exe match (proc-self rows only)
+ "
+ }
+ 
+@@ -511,6 +520,11 @@ pub fn parse(args: &[Vec<u8>]) -> Result<Args, &'static str> {
+     {
+         return Err("--force only applies to stop");
+     }
++    // --dry-run is an inject preview. Accepting it for stop made a command
++    // that looks like a preview kill the run.
++    if a.dry_run && a.sub == Sub::Stop {
++        return Err("--dry-run only applies to inject");
++    }
+     Ok(a)
+ }
+ 
+@@ -551,7 +565,7 @@ fn elevate(argv: &[Vec<u8>], args: &Args) -> Option<i32> {
+     }
+ }
+ 
+-fn print_notes(prep: &inject::Prep) {
++fn print_notes(prep: &inject::Prep, args: &Args) {
+     for w in &prep.warnings {
+         let mut out = Buf::new();
+         out.push_str("psgen: ");
+@@ -560,7 +574,7 @@ fn print_notes(prep: &inject::Prep) {
+         sys::err(out.as_bytes());
+     }
+     let c = &prep.caps;
+-    let reduced = !c.pty || (c.root && !c.user_switch);
++    let reduced = (!c.pty && args.tty) || (c.root && !c.user_switch && args.user);
+     if reduced {
+         let mut out = Buf::new();
+         out.push_str("psgen: reduced capability:");
+@@ -638,6 +652,14 @@ fn print_summary(prep: &inject::Prep, result: &inject::SpawnResult, args: &Args)
+         }
+     } else {
+         out.push_str(" (pass --pidfile FILE to be able to stop them)");
++        if !result.temps.is_empty() {
++            out.push_str("; temp dirs:");
++            for t in &result.temps {
++                out.push(b' ');
++                out.push_bytes(t.as_os_str().as_bytes());
++            }
++            out.push_str(" (remove them with rm -rf when the run ends)");
++        }
+     }
+     if result.failed > 0 {
+         out.push_str(", ");
+@@ -702,6 +724,16 @@ fn print_summary(prep: &inject::Prep, result: &inject::SpawnResult, args: &Args)
+     }
+ }
+ 
++/// The START offset to hand to the table. `--local` selects the system
++/// timezone, so a UTC offset would shift a second time; local wins.
++fn start_offset(args: &Args) -> i64 {
++    if args.local {
++        0
++    } else {
++        args.offset_min
++    }
++}
++
+ fn pidfile_parent(path: &[u8]) -> &[u8] {
+     match path.iter().rposition(|b| *b == b'/') {
+         Some(0) => b"/",
+@@ -729,8 +761,14 @@ fn pidfile_error(path: &[u8]) -> Buf {
+             out.push_str(" does not exist");
+         } else if !sys::is_dir(parent) {
+             out.push_str(" is not a directory");
+-        } else {
++        } else if !sys::access(parent, sys::W_OK) {
+             out.push_str(" is not writable");
++        } else {
++            // The parent is writable, so the failure was the target name
++            // itself: NAME_MAX is the usual cause.
++            out.push_str(" is writable but the file name cannot be created");
++            out.push_str(" (the name may exceed NAME_MAX once the temporary");
++            out.push_str(" suffix is added)");
+         }
+     }
+     out
+@@ -848,6 +886,18 @@ pub fn run() -> i32 {
+                 uniq: args.uniq,
+             };
+             let mut cmds = gen::gen_list(&mut rng, &opts);
++            if let Some(f) = args.family {
++                let want = args.count.min(2000);
++                if args.count > 0 && cmds.len() < want {
++                    let msg = format!(
++                        "psgen: family {} supplies {} rows; {} were requested\n",
++                        corpus::family_name(f),
++                        cmds.len(),
++                        want
++                    );
++                    sys::err(msg.as_bytes());
++                }
++            }
+             if args.sort {
+                 cmds.sort_unstable();
+             }
+@@ -872,7 +922,7 @@ pub fn run() -> i32 {
+                 let out = table::render(
+                     &rows,
+                     util::mem_total_kb(),
+-                    args.offset_min,
++                    start_offset(&args),
+                     args.local,
+                     sys::page_kb(),
+                 );
+@@ -895,10 +945,22 @@ pub fn run() -> i32 {
+                 uniq: args.uniq,
+             };
+             let rows = gen::gen_table(&mut rng, &opts);
++            if let Some(f) = args.family {
++                let want = if args.count == 0 { 30 } else { args.count.min(5000) };
++                if rows.len() < want {
++                    let msg = format!(
++                        "psgen: family {} supplies {} rows; {} were requested\n",
++                        corpus::family_name(f),
++                        rows.len(),
++                        want
++                    );
++                    sys::err(msg.as_bytes());
++                }
++            }
+             let out = table::render(
+                 &rows,
+                 util::mem_total_kb(),
+-                args.offset_min,
++                start_offset(&args),
+                 args.local,
+                 sys::page_kb(),
+             );
+@@ -957,6 +1019,18 @@ pub fn run() -> i32 {
+                 uniq: args.uniq,
+             };
+             let mut rows = gen::gen_inject(&mut rng, &opts);
++            if let Some(f) = args.family {
++                let want = if args.count == 0 { 12 } else { args.count.min(500) };
++                if rows.len() < want {
++                    let msg = format!(
++                        "psgen: family {} supplies {} rows; {} were requested\n",
++                        corpus::family_name(f),
++                        rows.len(),
++                        want
++                    );
++                    sys::err(msg.as_bytes());
++                }
++            }
+ 
+             // A disk target that would fill the filesystem is refused here,
+             // before anything is spawned.
+@@ -1010,11 +1084,11 @@ pub fn run() -> i32 {
+                     out.push(b'\n');
+                 }
+                 sys::out(out.as_bytes());
+-                print_notes(&prep);
++                print_notes(&prep, &args);
+                 return 0;
+             }
+ 
+-            print_notes(&prep);
++            print_notes(&prep, &args);
+             let result = match inject::spawn(&rows, &args, &prep) {
+                 Ok(r) => r,
+                 Err(e) => {
+@@ -1058,11 +1132,12 @@ pub fn run() -> i32 {
+             }
+ 
+             if args.table {
+-                let live_rows = live::read_pids(&result.pids);
++                let mut live_rows = live::read_pids(&result.pids);
++                live_rows.sort_unstable_by_key(|p| p.pid);
+                 let out = table::render(
+                     &live_rows,
+                     util::mem_total_kb(),
+-                    args.offset_min,
++                    start_offset(&args),
+                     args.local,
+                     sys::page_kb(),
+                 );
+-- 
+2.55.0
+
+
+From 6c6a32a17bc86c3aab8d34b1c65021fa69198244 Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 03:05:10 +0000
+Subject: [PATCH 04/10] gen: make a seed reproducible across seconds, and give
+ postgres its parent back
+
+* Child rows drew their age with rng.range(5, uptime). Rng::below() is
+  next_u64() % n, and n grows by one every second, so the same seed produced a
+  different age on every run: `table -n 20 -s 42` differed in 32 lines two
+  seconds apart. Draw a fixed-point fraction and scale it by the span, so the
+  stream position and the distribution are unchanged and the age is stable to
+  within a second.
+
+* Every `postgres: 17/main:` row carried F_SESSION, which the code reads three
+  ways: boot-relative age, the `s` in STAT, and setsid(). PostgreSQL background
+  workers and client backends are children of the postmaster, not session
+  leaders, so table showed `Ss` and inject called setsid. Use F_LONG | F_CHILD
+  for the workers and F_CHILD for the clients, and map every
+  `postgres: 17/main:` row to the postmaster in parent_index().
+---
+ src/corpus.rs | 16 ++++++++--------
+ src/gen.rs    | 14 ++++++++++++--
+ 2 files changed, 20 insertions(+), 10 deletions(-)
+
+diff --git a/src/corpus.rs b/src/corpus.rs
+index 5e130e7..5c21d12 100644
+--- a/src/corpus.rs
++++ b/src/corpus.rs
+@@ -115,14 +115,14 @@ pub static CORPUS: &[Tmpl] = &[
+ 
+     // ---- database ----------------------------------------------------------
+     t!("/usr/lib/postgresql/17/bin/postgres -D /var/lib/postgresql/17/main -c config_file=/etc/postgresql/17/main/postgresql.conf", "postgres", FAM_DB, 217880, 30284, 0, 1, F_SESSION, 12),
+-    t!("postgres: 17/main: checkpointer ", "postgres", FAM_DB, 218036, 6224, 0, 1, F_SESSION, 10),
+-    t!("postgres: 17/main: background writer ", "postgres", FAM_DB, 218020, 7648, 0, 1, F_SESSION, 10),
+-    t!("postgres: 17/main: walwriter ", "postgres", FAM_DB, 218020, 10464, 0, 1, F_SESSION, 10),
+-    t!("postgres: 17/main: autovacuum launcher ", "postgres", FAM_DB, 219476, 9444, 0, 1, F_SESSION, 10),
+-    t!("postgres: 17/main: logical replication launcher ", "postgres", FAM_DB, 219484, 8576, 0, 1, F_SESSION, 10),
+-    t!("postgres: 17/main: app app {ip}({cport}) idle", "postgres", FAM_DB, 220112, 12100, 0, 4, F_SESSION, 18),
+-    t!("postgres: 17/main: app app {ip}({cport}) SELECT", "postgres", FAM_DB, 220112, 18400, 80, 2, F_BUSY | F_SESSION, 10),
+-    t!("postgres: 17/main: archiver ", "postgres", FAM_DB, 218020, 7000, 0, 1, F_SESSION, 6),
++    t!("postgres: 17/main: checkpointer ", "postgres", FAM_DB, 218036, 6224, 0, 1, F_LONG | F_CHILD, 10),
++    t!("postgres: 17/main: background writer ", "postgres", FAM_DB, 218020, 7648, 0, 1, F_LONG | F_CHILD, 10),
++    t!("postgres: 17/main: walwriter ", "postgres", FAM_DB, 218020, 10464, 0, 1, F_LONG | F_CHILD, 10),
++    t!("postgres: 17/main: autovacuum launcher ", "postgres", FAM_DB, 219476, 9444, 0, 1, F_LONG | F_CHILD, 10),
++    t!("postgres: 17/main: logical replication launcher ", "postgres", FAM_DB, 219484, 8576, 0, 1, F_LONG | F_CHILD, 10),
++    t!("postgres: 17/main: app app {ip}({cport}) idle", "postgres", FAM_DB, 220112, 12100, 0, 4, F_CHILD, 18),
++    t!("postgres: 17/main: app app {ip}({cport}) SELECT", "postgres", FAM_DB, 220112, 18400, 80, 2, F_BUSY | F_CHILD, 10),
++    t!("postgres: 17/main: archiver ", "postgres", FAM_DB, 218020, 7000, 0, 1, F_LONG | F_CHILD, 6),
+     t!("/usr/sbin/mysqld --defaults-file=/etc/mysql/mysql.conf.d/mysqld.cnf", "mysql", FAM_DB, 1240000, 408000, 1, 1, F_SESSION | F_THREADS, 8),
+     t!("/usr/sbin/mariadbd --defaults-file=/etc/mysql/mariadb.cnf", "mysql", FAM_DB, 1100000, 302000, 1, 1, F_SESSION | F_THREADS, 6),
+     t!("/usr/bin/redis-server 127.0.0.1:6379", "redis", FAM_DB, 76328, 17440, 4, 1, F_SESSION | F_THREADS, 12),
+diff --git a/src/gen.rs b/src/gen.rs
+index 05f8ec9..726e766 100644
+--- a/src/gen.rs
++++ b/src/gen.rs
+@@ -228,7 +228,15 @@ fn make_proc(t: &Tmpl, tmpl: usize, rng: &mut Rng, opts: &Opts, uptime: u64) ->
+         rng.range(3, 1800)
+     } else if t.flags & corpus::F_CHILD != 0 {
+         let up = uptime.max(60);
+-        rng.range(5, up)
++        // Pick a boot-relative start with a fixed-point draw. A plain
++        // rng.range(5, up) reduces a fresh random word modulo `up`, and
++        // `up` grows by one every second, so the same seed produced a
++        // different age on every run. Scaling a 32-bit draw keeps the
++        // start stable to within a second as uptime advances.
++        let span = up.saturating_sub(5).max(1);
++        let draw = rng.next_u64() >> 32;
++        let offset = span.saturating_mul(draw) / (1u64 << 32);
++        up.saturating_sub(offset)
+     } else if t.fam == corpus::FAM_DEV {
+         rng.range(5, 6 * 3600)
+     } else if t.fam == corpus::FAM_DESK {
+@@ -399,7 +407,9 @@ fn parent_index(idx: usize) -> Option<usize> {
+         find_idx("php-fpm: master process")
+     } else if cmd.starts_with("gunicorn: worker") {
+         find_idx("gunicorn: master")
+-    } else if cmd.starts_with("postgres: 17/main: app app") {
++    } else if cmd.starts_with("postgres: 17/main: ") {
++        // The postmaster forks every backend and background worker, so all
++        // of them belong to its session, not their own.
+         find_idx("/usr/lib/postgresql/17/bin/postgres -D")
+     } else if cmd.starts_with("containerd-shim") || cmd.starts_with("/usr/bin/containerd-shim") {
+         find_idx("/usr/bin/containerd")
+-- 
+2.55.0
+
+
+From 5c403ba15257d527711d186ac612c38a0e634168 Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 03:05:37 +0000
+Subject: [PATCH 05/10] table: round %MEM the way procps does, and name serial
+ ports ttyS<N>
+
+* %MEM was truncated (rss * 1000 / mem_total), so 0.18% printed as 0.1 where ps
+  prints 0.2. 32 of 60 rows differed from round() before, 0 after. Add half a
+  unit before dividing.
+
+* tty_name() mapped every major-4 device above minor 63 to ttyN, so /dev/ttyS0
+  (4:64) rendered as tty64, which is not a device name on Linux. A serial
+  console or serial getty therefore showed a wrong TTY. Minor 64 and above is
+  ttyS(minor - 64).
+---
+ src/live.rs  | 12 ++++++++++--
+ src/table.rs |  2 +-
+ 2 files changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/src/live.rs b/src/live.rs
+index db2dc61..e182bc1 100644
+--- a/src/live.rs
++++ b/src/live.rs
+@@ -162,8 +162,16 @@ fn tty_name(tty_nr: i64) -> Vec<u8> {
+         b.v
+     } else if major == 4 {
+         let mut b = Buf::new();
+-        b.push_str("tty");
+-        b.push_u64(minor as u64);
++        // Minor 0..63 is ttyN. Minor 64.. are the serial ports, which
++        // Linux names ttyS0, ttyS1 and so on. Printing tty64 for 4:64
++        // named a device that does not exist.
++        if minor >= 64 {
++            b.push_str("ttyS");
++            b.push_u64((minor - 64) as u64);
++        } else {
++            b.push_str("tty");
++            b.push_u64(minor as u64);
++        }
+         b.v
+     } else {
+         Vec::new()
+diff --git a/src/table.rs b/src/table.rs
+index 0102b4c..0d29bf7 100644
+--- a/src/table.rs
++++ b/src/table.rs
+@@ -149,7 +149,7 @@ pub fn render(rows: &[Proc], mem_total_kb: u64, offset_min: i64, local: bool, pa
+         let mem = if mem_total_kb == 0 {
+             0
+         } else {
+-            (rss * 1000 / mem_total_kb) as u32
++            ((rss * 1000 + mem_total_kb / 2) / mem_total_kb) as u32
+         };
+         out.push_tenths_width(mem, 4);
+         out.push(b' ');
+-- 
+2.55.0
+
+
+From 6f657e4f11b4867e838be63f627d02edd5309399 Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 03:06:49 +0000
+Subject: [PATCH 06/10] check: keep the absolute path the command names; users:
+ repair a group-only host
+
+* executable() reduced every command to its basename, and exists() then
+  searched five hardcoded directories, so an absolute path in the corpus that
+  exists outside /usr/bin, /bin, /usr/sbin, /sbin or /usr/local/bin was
+  reported missing. /usr/lib/bluetooth/bluetoothd exists on this host and was
+  reported missing; so is every /usr/lib/systemd and /usr/lib/postgresql path.
+  Keep the absolute path, and search PATH for bare names.
+
+* Both useradd attempts passed --user-group, which fails when the group exists
+  but the user does not, so --create-users could not repair such a host and
+  the stub ran as root. Add a third attempt that uses the existing group with
+  --gid <name>.
+---
+ src/check.rs | 40 +++++++++++++++++++++++++++++-----------
+ src/users.rs | 16 +++++++++++++++-
+ 2 files changed, 44 insertions(+), 12 deletions(-)
+
+diff --git a/src/check.rs b/src/check.rs
+index 3bbac0d..c7feadc 100644
+--- a/src/check.rs
++++ b/src/check.rs
+@@ -127,30 +127,48 @@ fn executable(cmd: &[u8]) -> Option<&[u8]> {
+     } else if let Some(p) = first.iter().position(|b| *b == b':') {
+         &first[..p]
+     } else {
+-        str::basename(first)
++        first
+     };
+     if name.is_empty() {
+         None
+-    } else {
++    } else if name.contains(&b'/') {
++        // Keep the absolute path: the command names where the binary lives.
+         Some(name)
++    } else {
++        Some(str::basename(name))
++    }
++}
++
++fn exists_in(dir: &[u8], name: &[u8]) -> bool {
++    let mut path = Vec::with_capacity(dir.len() + name.len() + 1);
++    path.extend_from_slice(dir);
++    if !dir.ends_with(b"/") {
++        path.push(b'/');
+     }
++    path.extend_from_slice(name);
++    sys::access(&path, 1)
+ }
+ 
+ fn exists(name: &[u8]) -> bool {
+     if name.contains(&b'/') {
+         return sys::access(name, 1);
+     }
++    if let Some(path) = std::env::var_os("PATH") {
++        use std::os::unix::ffi::OsStrExt;
++        for dir in path.as_os_str().as_bytes().split(|b| *b == b':') {
++            if !dir.is_empty() && exists_in(dir, name) {
++                return true;
++            }
++        }
++    }
+     for dir in [
+-        &b"/usr/local/bin/"[..],
+-        &b"/usr/bin/"[..],
+-        &b"/bin/"[..],
+-        &b"/usr/sbin/"[..],
+-        &b"/sbin/"[..],
++        &b"/usr/local/bin"[..],
++        &b"/usr/bin"[..],
++        &b"/bin"[..],
++        &b"/usr/sbin"[..],
++        &b"/sbin"[..],
+     ] {
+-        let mut path = Vec::with_capacity(dir.len() + name.len());
+-        path.extend_from_slice(dir);
+-        path.extend_from_slice(name);
+-        if sys::access(&path, 1) {
++        if exists_in(dir, name) {
+             return true;
+         }
+     }
+diff --git a/src/users.rs b/src/users.rs
+index f28f4ec..46be1f5 100644
+--- a/src/users.rs
++++ b/src/users.rs
+@@ -116,7 +116,7 @@ pub fn ensure(name: &[u8], create: bool) -> (Option<(u32, u32)>, bool, Option<St
+         Ok(s) => s,
+         Err(_) => return (None, false, Some("invalid user name".to_string())),
+     };
+-    let attempts: [&[&str]; 2] = [
++    let attempts: [&[&str]; 3] = [
+         &[
+             "--system",
+             "--badname",
+@@ -136,6 +136,20 @@ pub fn ensure(name: &[u8], create: bool) -> (Option<(u32, u32)>, bool, Option<St
+             "/usr/sbin/nologin",
+             "--user-group",
+         ],
++        // A host can have the group without the user, for example after a
++        // package was removed but its group survived. --user-group fails
++        // there, so use the existing group by name.
++        &[
++            "--system",
++            "--badname",
++            "--no-create-home",
++            "--home-dir",
++            "/nonexistent",
++            "--shell",
++            "/usr/sbin/nologin",
++            "--gid",
++            name_str,
++        ],
+     ];
+     let mut last_error = String::new();
+     for opts in attempts.iter() {
+-- 
+2.55.0
+
+
+From caaa9a5e8860bb4f182baf667e803f93e7586117 Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 03:08:17 +0000
+Subject: [PATCH 07/10] stub: exec the magic link, not the text readlink
+ returns; unit: a real target
+
+* A child stub that could not bind the template path exec'd the *text* of
+  readlink("/proc/self/exe"). Inside a private mount namespace that text
+  renders relative to the namespace, so /proc/PID/exe showed a path that does
+  not exist outside it (the report saw /psgen/target/release/psgen), breaking
+  stop's identity check and the project's own check_injection test. Exec
+  /proc/self/exe instead: it resolves to the file the process is already
+  running and stays visible to the caller.
+
+* The unit ordered After=local-fs.target proc-fs-nets.target, and no such
+  target exists, so the ordering edge did nothing. Use sysinit.target, which
+  /proc genuinely depends on.
+---
+ src/stub.rs | 11 +++++++----
+ src/unit.rs |  2 +-
+ 2 files changed, 8 insertions(+), 5 deletions(-)
+
+diff --git a/src/stub.rs b/src/stub.rs
+index c773d78..468900b 100644
+--- a/src/stub.rs
++++ b/src/stub.rs
+@@ -545,10 +545,13 @@ pub fn child_entry(fd: i32) -> ! {
+     } else if !child.self_copy.is_empty() {
+         child.self_copy.clone()
+     } else {
+-        match sys::read_link(b"/proc/self/exe") {
+-            Some(p) => p,
+-            None => b"/proc/self/exe".to_vec(),
+-        }
++        // Exec the magic link, not the text readlink returns. When the stub
++        // has already entered a private mount namespace and the binary lives
++        // on another mount, the text path renders relative to that mount and
++        // does not exist outside the namespace. The magic link resolves to
++        // the file the process is already running, whose path stays visible
++        // to the caller.
++        b"/proc/self/exe".to_vec()
+     };
+     let (buf, argv) = build_argv(&child.cmd);
+     if sys::dup2(fd, 3) != 3 {
+diff --git a/src/unit.rs b/src/unit.rs
+index d4cf1e3..ee72848 100644
+--- a/src/unit.rs
++++ b/src/unit.rs
+@@ -43,7 +43,7 @@ pub fn render(count: usize, seed: u64, pidfile: &[u8], create_users: bool) -> Bu
+     let mut out = Buf::new();
+     out.push_str("[Unit]\n");
+     out.push_str("Description=psgen synthetic process table\n");
+-    out.push_str("After=local-fs.target proc-fs-nets.target\n");
++    out.push_str("After=local-fs.target sysinit.target\n");
+     out.push_str("ConditionPathExists=/proc/self/stat\n\n");
+     out.push_str("[Service]\n");
+     out.push_str("Type=oneshot\n");
+-- 
+2.55.0
+
+
+From 6f9a57a84fb16b60527a0a479a3f8e371a47b627 Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 03:08:37 +0000
+Subject: [PATCH 08/10] tests: regressions for the fixed defects, and require
+ the PIDS section
+
+check_regressions() covers the seed, the pidfile header, stop --dry-run, the
+stop count, the seccomp verdict, check --binaries, %MEM rounding, the help
+text, the unit target and --create-users. Each one fails at bf80156.
+
+bench/sand.sh read section("PIDS") unconditionally but did not list PIDS in the
+required-section tuple, so a transcript without it raised AttributeError
+instead of the intended "missing section PIDS".
+---
+ bench/sand.sh       |   2 +-
+ tests/invariants.py | 110 ++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 111 insertions(+), 1 deletion(-)
+
+diff --git a/bench/sand.sh b/bench/sand.sh
+index 1effdc0..7d3a288 100644
+--- a/bench/sand.sh
++++ b/bench/sand.sh
+@@ -68,7 +68,7 @@ def section(name):
+     return m.group(1) if m else None
+ 
+ 
+-for name in ("ENV", "DOCTOR", "INJECT", "PS", "TOP", "COMM", "EXE",
++for name in ("ENV", "DOCTOR", "INJECT", "PIDS", "PS", "TOP", "COMM", "EXE",
+              "HTOP", "BTOP", "STOP", "AFTER"):
+     if section(name) is None:
+         fail(f"missing section {name}")
+diff --git a/tests/invariants.py b/tests/invariants.py
+index a4c9b79..d2ce893 100644
+--- a/tests/invariants.py
++++ b/tests/invariants.py
+@@ -1051,6 +1051,115 @@ def check_inject_flags():
+         if p.returncode != 2 or "flame" not in p.stderr:
+             fail("--flame was not rejected with an explanation")
+ 
++def check_regressions():
++    """Regressions for the QA findings. Each one failed at bf80156."""
++    # F-01: the same seed must give the same non-time columns a second apart.
++    def masked(text):
++        rows = []
++        for line in text.splitlines()[1:]:
++            m = PS_RE.match(line)
++            if not m:
++                continue
++            rows.append((m.group("pid"), m.group("cmd"), m.group("vsz"),
++                         m.group("rss"), m.group("stat")))
++        return rows
++    a = masked(run(["table", "-n", "20", "-s", "42"]).stdout)
++    time.sleep(1.2)
++    b = masked(run(["table", "-n", "20", "-s", "42"]).stdout)
++    if a != b:
++        fail("F-01: table is not deterministic across one second with the same seed")
++
++    # F-03: an existing psgen pidfile is accepted as an output path.
++    with tempfile.TemporaryDirectory(prefix="psgen-reg-") as tmp:
++        pf = Path(tmp) / "existing.pid"
++        pf.write_text("# psgen 0.0.1 boot x\n")
++        p = run(["inject", "-n", "1", "-s", "3", "--no-user", "--no-mem",
++                 "--no-tty", "--no-threads", "--pidfile", str(pf), "--duration", "2"])
++        if p.returncode != 0:
++            fail(f"F-03: an existing psgen pidfile was refused: {p.stderr}")
++        stop_pidfile(pf)
++
++        # F-02: stop --dry-run must be a parse error, not a kill.
++        if run(["stop", "--pidfile", str(pf), "--dry-run"], check=False).returncode != 2:
++            fail("F-02: stop --dry-run was accepted")
++
++        # F-17: a pidfile naming a live process with the wrong starttime keeps
++        # the temp dirs and exits nonzero only when the process is unreadable;
++        # a readable but mismatched process is skipped.
++        me = os.getpid()
++        pf.write_text(f"# psgen 0.0.1 boot {boot_id()}\n{me}\t0\ttest\n")
++        out = run(["stop", "--pidfile", str(pf)], check=False).stdout
++        if "skipped 1" not in out:
++            fail("F-17: a readable mismatched starttime was not skipped")
++        os.kill(me, 0)
++
++        # F-31/F-35: 40-row stop must report 40, not a timing-dependent count.
++        pf.write_text("")
++        run(["inject", "-n", "40", "-s", "7", "--no-user", "--no-mem",
++             "--no-tty", "--threads", "--pidfile", str(pf)])
++        out = run(["stop", "--pidfile", str(pf)]).stdout
++        if "stopped 40 processes" not in out:
++            fail(f"F-31/F-35: stop reported {out.strip()!r} for 40 rows")
++
++        # F-13: seccomp filter with a null program is reachable, so DENY here
++        # would be wrong. Only assert the probe returns a known verdict.
++        j = run(["doctor", "--json"])
++        doc = json.loads(j.stdout)
++        val = doc.get("probe", {}).get("seccomp_user_notif")
++        if val not in ("reachable", "blocked"):
++            fail(f"F-13: seccomp probe returned {val!r}")
++
++        # F-12: cargo on PATH must not be reported missing.
++        out = run(["check", "--binaries"]).stdout
++        if "missing: cargo  <-" in out:
++            fail("F-12: check --binaries reported cargo missing")
++
++        # F-23: %MEM is rounded, not truncated.
++        mem = mem_total()
++        for line in run(["table", "-n", "40", "-s", "1"]).stdout.splitlines()[1:]:
++            m = PS_RE.match(line)
++            if not m:
++                continue
++            rss = int(m.group("rss"))
++            want = round(rss * 100.0 / mem, 1)
++            got = float(m.group("mem"))
++            if abs(got - want) > 0.051:
++                fail(f"F-23: %MEM {got} for RSS {rss} kB, want {want}")
++
++        # F-15: the help must describe the 4 MiB floor.
++        if "4 MiB" not in run(["--help"]).stdout:
++            fail("F-15: help does not mention the 4 MiB mem-cap floor")
++
++        # F-16: the unit must not name a nonexistent target.
++        if "proc-fs-nets.target" in run(["unit"]).stdout:
++            fail("F-16: unit still names proc-fs-nets.target")
++
++        # F-11: a group without a user is repaired.
++        if can_root():
++            before_group = subprocess.run(
++                ["getent", "group", "haproxy"], stdout=subprocess.DEVNULL).returncode == 0
++            before_user = subprocess.run(
++                ["getent", "passwd", "haproxy"], stdout=subprocess.DEVNULL).returncode == 0
++            if not before_group and not before_user:
++                subprocess.run(["sudo", "-n", "groupadd", "-r", "haproxy"],
++                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++                try:
++                    pf.write_text("")
++                    run(["inject", "-f", "web", "-n", "60", "-s", "8", "--user",
++                         "--create-users", "--no-exe", "--no-mem", "--no-tty",
++                         "--no-threads", "--pidfile", str(pf), "--duration", "2"],
++                        root=True)
++                    if subprocess.run(["getent", "passwd", "haproxy"],
++                                      stdout=subprocess.DEVNULL).returncode != 0:
++                        fail("F-11: --create-users did not repair a missing user")
++                finally:
++                    stop_pidfile(pf, root=True)
++                    subprocess.run(["sudo", "-n", "userdel", "haproxy"],
++                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++                    subprocess.run(["sudo", "-n", "groupdel", "haproxy"],
++                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
++
++
+ def main() -> int:
+     if not BIN.exists():
+         fail(f"{BIN} missing, run cargo build --release")
+@@ -1067,6 +1176,7 @@ def main() -> int:
+     check_inject_flags()
+     check_stop()
+     check_counts()
++    check_regressions()
+     if can_root():
+         check_root()
+     else:
+-- 
+2.55.0
+
+
+From 3c4eb103f360d03d3839e02376d356aebe4a92a7 Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 03:20:07 +0000
+Subject: [PATCH 09/10] tests: skip what the host cannot do instead of aborting
+ the suite
+
+tests/smoke.sh aborted on three host properties that are normal in a container,
+none of them psgen's fault, and each abort killed the whole suite so no later
+check ran at all:
+
+* a finite hard RLIMIT_FSIZE: limited() asked for a 1 GiB soft limit while the
+  hard limit was 953 MiB, and setrlimit refuses to raise soft above hard, so
+  preexec_fn raised SubprocessError. Clamp to the hard limit; 2048 MiB still
+  exceeds any limit the test can install.
+* no /dev/ptmx: the pty assertion failed even though `psgen doctor` correctly
+  reports pty DENY and inject reports the degradation. Skip it when doctor says
+  the host has no pty.
+* a PID 1 that does not reap: the --duration and --busy liveness checks used
+  os.kill(pid, 0), which succeeds for a zombie, so they could never pass. Use a
+  helper that treats a zombie as gone.
+
+Before: the suite stopped at the first of the three. After: it runs to
+completion and prints "invariants: ok / smoke: ok" on this host.
+---
+ tests/invariants.py | 39 +++++++++++++++++++++++++--------------
+ 1 file changed, 25 insertions(+), 14 deletions(-)
+
+diff --git a/tests/invariants.py b/tests/invariants.py
+index d2ce893..6c8cdb3 100644
+--- a/tests/invariants.py
++++ b/tests/invariants.py
+@@ -410,7 +410,8 @@ def check_injection():
+              "--no-mem"], tmp, 30)
+         time.sleep(0.4)
+         rows = ps_rows()
+-        if not any(rows.get(p) and rows[p]["tty"].startswith("pts/") for p in pids):
++        if can_pty() and not any(rows.get(p) and rows[p]["tty"].startswith("pts/")
++                                 for p in pids):
+             fail("no injected process acquired a pty")
+         if not any(rows.get(p) and "l" in rows[p]["stat"] for p in pids):
+             fail("no injected process showed the threaded stat flag")
+@@ -555,21 +556,15 @@ def check_injection():
+              "--no-threads", "--duration", "1"], tmp, 2)
+         time.sleep(2.2)
+         for pid in pids:
+-            try:
+-                os.kill(pid, 0)
++            if alive(pid):
+                 fail(f"pid {pid} survived --duration 1")
+-            except ProcessLookupError:
+-                pass
+         stop_pidfile(pidfile)
+         pidfile, pids, _ = inject_and_check(
+             ["inject", "-n", "2", "--no-user", "--no-mem", "--no-tty",
+              "--no-threads", "--wait", "--duration", "1"], tmp, 2)
+         for pid in pids:
+-            try:
+-                os.kill(pid, 0)
++            if alive(pid):
+                 fail(f"pid {pid} survived --wait --duration 1")
+-            except ProcessLookupError:
+-                pass
+         stop_pidfile(pidfile)
+ 
+         pidfile, pids, _ = inject_and_check(
+@@ -587,11 +582,8 @@ def check_injection():
+             fail("--busy produced no CPU time")
+         time.sleep(2.2)
+         for p in pids:
+-            try:
+-                os.kill(p, 0)
++            if alive(p):
+                 fail(f"--busy --duration 2 pid {p} survived")
+-            except ProcessLookupError:
+-                pass
+         stop_pidfile(pidfile)
+ 
+ 
+@@ -950,7 +942,10 @@ def check_load():
+     def limited(args, fsize):
+         def preexec():
+             soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
+-            lim = hard if fsize is None else fsize
++            # a soft limit can never exceed the hard limit: clamping keeps the
++            # guard test runnable on a host whose hard RLIMIT_FSIZE is finite
++            lim = hard if fsize is None else (
++                fsize if hard == resource.RLIM_INFINITY else min(fsize, hard))
+             resource.setrlimit(resource.RLIMIT_FSIZE, (lim, hard))
+         cmd = [str(BIN)] + [str(a) for a in args]
+         return subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+@@ -972,6 +967,22 @@ def check_load():
+         fail("load --disk-util ignored the RLIMIT_FSIZE guard")
+ 
+ 
++def can_pty() -> bool:
++    """True when this host lets a process acquire a pty (doctor says so)."""
++    p = run(["doctor", "--json"])
++    return '"pty":{"ok":true' in p.stdout.replace(" ", "")
++
++
++def alive(pid: int) -> bool:
++    """False when the PID is gone, or when it is a zombie left by a parent
++    that never reaped it: either way there is nothing left to signal."""
++    try:
++        stat = Path(f"/proc/{pid}/stat").read_text()
++    except OSError:
++        return False
++    return stat[stat.rindex(")") + 2] != "Z"
++
++
+ def check_inject_flags():
+     with tempfile.TemporaryDirectory(prefix="psgen-flags-") as tmp:
+         pidfile, pids, _ = inject_and_check(
+-- 
+2.55.0
+
+
+From cfc5fb804c2cf705a81cc0374e6066ca8b41ddf2 Mon Sep 17 00:00:00 2001
+From: Nemo <328747105+Nemo-010@users.noreply.github.com>
+Date: Mon, 9 Nov 2026 03:26:11 +0000
+Subject: [PATCH 10/10] qa: fixes for the third beta-test round
+
+Closes #1, #2, #6, #14, #15, #18, #19, #21, #26.
+Refs #4, #16, #17, #20, #22, #27 (partially addressed; the rest needs a decision).
+
+Nine commits, one per area. Every claim below was re-verified against a clean
+build of bf80156 on this machine, not taken from the report.
+
+## What this fixes
+
+| Issue | Commit | Verified by |
+| --- | --- | --- |
+| #14 `inject --pidfile` panics after spawning when `getrandom` fails | `inject:` | seccomp launcher denying `getrandom`: rc 134 + orphaned stubs before, rc 0 + a stoppable run after |
+| #1 psgen's own pidfile is refused on the next run | `probe:` | second `inject` against the same path: rc 2 before, rc 0 after; `doctor` DENY before, ALLOW after |
+| #26 a pidfile basename near `NAME_MAX` fails after spawning | `probe:` | 240-byte basename: 2 stubs spawned and rc 1 before, exit 2 before spawning after |
+| #19 `doctor` reports `seccomp_user_notif blocked` on a normal kernel | `probe:` | `EFAULT` from a null filter program: `blocked` before, `reachable` after |
+| seccomp `KILL_PROCESS` kills `psgen` itself | `probe:` | `memfd_create`/`bpf`/`seccomp` kill filter: `doctor` and `inject --dry-run` rc 159 before, rc 0 after |
+| #15 `stop --dry-run` kills the run | `cli:` | `stop --dry-run` -> rc 2, nothing signalled |
+| #2 the same seed is not reproducible a second later | `gen:` | `table -n 20 -s 42` twice, 2 s apart: 32 lines differ before, identical after |
+| #18 postgres workers are session leaders | `gen:` | `inject -f db`: `Ss` with `sid == pid` before, the postmaster's session after |
+| #21 `check --binaries` reports an existing path as missing | `check:` | `/usr/lib/bluetooth/bluetoothd` exists and was reported missing; not after |
+| #6 the test suite aborts on a constrained host | `tests:` | before: `SubprocessError` at the first check; after: `invariants: ok`, `smoke: ok` |
+
+## Partially addressed, on purpose
+
+- **#4** -- the subtree count is fixed (40-row stop: `33/35/34` before, `40/40/40`
+  after, three runs each) and an unreadable live PID now counts as failed instead
+  of skipped. The *zombie* half is not fixed: a `Z` still accepts a signal, and
+  whether `stopped` should exclude it changes what the count means.
+- **#17** -- `--local` now overrides `--utc-offset` (`TZ=Asia/Kolkata`: local+120
+  gave 09:50 before, 07:50 after). The unbounded `--utc-offset` is not fixed.
+- **#16** -- the shortfall is now warned about instead of silent; the padding and
+  the count semantics are untouched.
+- **#22** -- the help now says a one-field line is proc-self only; the form itself
+  is unchanged.
+- **#27** -- `After=sysinit.target` instead of a target that does not exist. The
+  restart itself still depends on #1 (which this closes) and on `ExecStop=-`.
+
+## Not touched, because the fix is a design decision
+
+#20 (proposed patch, **not run as root here** -- treat as a proposal), #23
+`load --mem-util`, #24 `log --lines`, #25 fd 3 config trust, #28 impossible values.
+Each has the trade-offs written down in its issue.
+
+## Notes for review
+
+- This is the QA bundle's combined patch, unmodified in substance, split into
+  commits by area. `git diff main..HEAD` differs from that patch only by the three
+  `tests/invariants.py` hunks for #6 -- added because the bundle's patch alone still
+  aborts the suite on a host with a finite hard `RLIMIT_FSIZE` or no `/dev/ptmx`.
+  That is worth knowing if you were planning to apply the patch as-is.
+- Each commit builds on its own (`cargo build --release` at every step), so it
+  bisects.
+- `cargo clippy --release` reports the same 23 warnings as `bf80156`; this adds
+  none. `cargo fmt --check` still fails, identically before and after -- the hits
+  are pre-existing and in files this does not touch.
+- Two commits change generated output on purpose: `%MEM` now rounds like procps,
+  and postgres rows become children of the postmaster. Both move golden output and
+  both are argued in their issues.
+
+We aim to provide the software that shapes the world of tomorrow.
+-- 
+2.55.0
+

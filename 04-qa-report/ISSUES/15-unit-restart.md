@@ -1,0 +1,103 @@
+`psgen unit` prints a service that can be started exactly once per boot. `ExecStart` uses a fixed `--pidfile`, `stop` does not remove it, and a second `inject` against an existing pidfile is refused (issue #1) — so `systemctl stop` followed by `systemctl start` fails, which is the one thing a `Type=oneshot` + `RemainAfterExit=yes` unit has to do.
+
+## What happens
+
+```
+# psgen unit > /etc/systemd/system/psgen.service
+# systemctl start psgen
+# systemctl stop psgen            # ExecStop runs `psgen stop --pidfile /run/psgen.pid`
+# ls -l /run/psgen.pid
+-rw------- 1 root root 310 …      # still there: stop does not unlink it
+# systemctl start psgen
+psgen: cannot write the pidfile /run/psgen.pid: the path is not an empty file
+        or a psgen pidfile; use /tmp/psgen-pids.txt instead
+Job for psgen.service failed because the control process exited with error code.
+```
+
+The reason given by the tool ("not an empty file or a psgen pidfile") is itself wrong
+— the file *is* a psgen pidfile (that is issue #1) — but even after #1 is fixed the
+unit has two further problems:
+
+1. **`ExecStop` fails when the pidfile is absent.** If the inject failed, or all rows
+   already exited on `--duration`, `psgen stop` exits 1 and systemd marks the stop as
+   failed. `ExecStop=-` (the `-` prefix) is the standard fix.
+2. **`ConditionPathExists=/proc/self/stat`** is evaluated by the manager, so it is
+   always true and says nothing about the service's own procfs.
+
+## Patch
+
+```diff
+--- a/src/unit.rs
++++ b/src/unit.rs
+-    out.push_str("ExecStop=");
++    // A missing pidfile must not mark the service stop as failed.
++    out.push_str("ExecStop=-");
+```
+
+and give the unit a directory systemd owns and cleans, instead of a file in `/run`
+that nothing removes:
+
+```diff
+ [Service]
++RuntimeDirectory=psgen
++RuntimeDirectoryMode=0700
+ Type=oneshot
+ RemainAfterExit=yes
+-ExecStart=… --pidfile /run/psgen.pid …
++ExecStart=… --pidfile /run/psgen/psgen.pid …
+```
+
+`RuntimeDirectory=` is removed by the manager on stop, so the next start finds an
+absent pidfile, which is a state `inject` already accepts. This fixes the restart
+without depending on #1 being fixed first.
+
+The alternative is to have `stop` unlink the pidfile on success. That changes what
+`stop` means for everyone (a second `stop` would then report "cannot read pidfile"
+instead of a no-op) and breaks the documented "the pidfile is trusted input" model,
+so the unit-side fix is the less invasive one.
+
+## Why it is worth fixing even though #1 exists
+
+Issue #1 is about the pidfile acceptance rule; it does not say anything about a unit
+that never cleans up after itself. Both need to be true for the printed unit to be
+usable. Fix #1 alone and the restart works by accident, on a path nothing tests; fix
+the unit too and it works for the reason the unit file states.
+
+## Test that would have caught it
+
+```python
+# in tests/vm.sh, which already boots a guest with systemd as PID 1
+start = "systemctl start psgen-test"
+subprocess.run(start.split(), check=True)
+subprocess.run("systemctl stop psgen-test".split(), check=True)
+r = subprocess.run(start.split(), check=False)
+if r.returncode != 0:
+    fail("the printed unit could not be restarted")
+
+# and the stop must be tolerant of an absent pidfile
+Path("/run/psgen/psgen.pid").unlink(missing_ok=True)
+if subprocess.run("systemctl stop psgen-test".split()).returncode != 0:
+    fail("ExecStop failed with no pidfile")
+```
+
+`tests/vm.sh` already runs `systemd-analyze verify` on the unit, which cannot catch
+either case: the file is syntactically valid.
+
+## Related, already tracked elsewhere
+
+- The pidfile acceptance rule that makes this fail outright is issue #1.
+- `unit` dropping `-p`, `-f`, `--no-mem`, `-d`, `--no-root`, `--no-user`, `--no-tty`,
+  `--no-threads`, `--cpu`, `--mem-cap` and `--mem-target` is #13 item 13.2, so it is
+  not repeated here.
+- `After=local-fs.target proc-fs-nets.target` naming a target that does not exist is
+  #13 item 13.1.
+- `unit -n` not being capped at the inject cap of 500 (so `unit -n 1000` prints a unit
+  that silently spawns 500) is small and fits #13's grab bag; noted here only because
+  it is in the same file.
+
+## Environment
+
+`bf80156` built with `cargo 1.99.1`, x86-64, Linux 7.2.11. The unit text and the
+`stop` behaviour were verified here; the systemd restart cycle was verified by the
+report in a KVM guest (this cage has no systemd as PID 1), and follows mechanically
+from the pidfile exit code.

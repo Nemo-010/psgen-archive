@@ -1,0 +1,822 @@
+[
+  {
+    "sha": "24d51772539045b743c48dd1228b32c86f686438",
+    "node_id": "C_kwDOVnpTqNoAKDI0ZDUxNzcyNTM5MDQ1Yjc0M2M0OGRkMTIyOGIzMmM4NmY2ODY0Mzg",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T02:59:51Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T02:59:51Z"
+      },
+      "message": "inject: write a pidfile that cannot panic, and count each stop line once\n\nTwo defects in the same file:\n\n* random_hex16() copies an 8-byte u64 into a 4-byte tail when getrandom\n  fails, so copy_from_slice panics. write_pidfile() runs after spawn(), so\n  with panic = \"abort\" the process dies with the stubs already running, no\n  pidfile written and the staging directories left behind. Copy the first\n  four bytes of the clock instead.\n\n* stop() signalled the pidfile in file order, which is ascending PID, so a\n  root's process-group kill reaped its own children before their lines were\n  reached and they were counted as skipped. A 40-row run reported \"stopped\n  33\", \"35\" or \"34\" depending on timing. Signal the deepest PIDs first so\n  every line gets its own signal, and read /proc/PID/stat once for both\n  starttime and pgrp.\n\n  While there: a PID the caller cannot inspect (hidepid=2, EPERM/EACCES from\n  pidfd_open) is not a gone PID. Count it as failed so the exit code is\n  nonzero and the temp directories are kept, and only signal a process group\n  when the PID really is its leader, so a stale group from PID reuse cannot\n  be signalled by accident.\n\nAlso warn when --create-users or --mem-cap/--phys-cap cannot take effect.",
+      "tree": {
+        "sha": "d2070a013f67efe74853420981934b8330c0bcc4",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/d2070a013f67efe74853420981934b8330c0bcc4"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/24d51772539045b743c48dd1228b32c86f686438",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/24d51772539045b743c48dd1228b32c86f686438",
+    "html_url": "https://github.com/Azathothas/psgen/commit/24d51772539045b743c48dd1228b32c86f686438",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/24d51772539045b743c48dd1228b32c86f686438/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "bf801560509c2ee84cdcb7c35657ecd2d85b058d",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/bf801560509c2ee84cdcb7c35657ecd2d85b058d",
+        "html_url": "https://github.com/Azathothas/psgen/commit/bf801560509c2ee84cdcb7c35657ecd2d85b058d"
+      }
+    ]
+  },
+  {
+    "sha": "6640eed31897b8121b415ac47e19474808d0bfd4",
+    "node_id": "C_kwDOVnpTqNoAKDY2NDBlZWQzMTg5N2I4MTIxYjQxNWFjNDdlMTk0NzQ4MDhkMGJmZDQ",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:01:26Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:01:26Z"
+      },
+      "message": "probe: accept psgen's own pidfile, preflight the real temp name, and stop lying about seccomp\n\n* pidfile_target_ok() compared nine bytes of the buffer with the eight-byte\n  literal b\"# psgen \", so the comparison was false for every input. A pidfile\n  psgen itself wrote was refused on the next run, which also made the printed\n  systemd unit impossible to restart. Compare the eight bytes.\n\n* pidfile_creatable() created a short .psgen-probe-<pid>-<ns> file in the\n  parent directory, while write_pidfile() appends .tmp.<pid>.<16 hex> to the\n  target name. A basename near NAME_MAX passed the preflight and then failed\n  after every stub was forked. Build the name the writer will actually use.\n\n* seccomp_user_notif() classified EFAULT as blocked and ENOSYS as reachable,\n  which is backwards: EFAULT is the expected answer for a null filter program\n  and means the call is reachable, ENOSYS means the kernel has no seccomp.\n  bpf_allowed() had the same shape, treating only EPERM as blocked.\n\n* check_pty(), check_memfd() and the two posture probes ran in the caller, so\n  a seccomp policy that returns KILL_PROCESS for memfd_create, bpf or seccomp\n  killed psgen itself: `psgen doctor` and `psgen inject --dry-run` exited 159\n  (SIGSYS). Run them in a forked child, as the module comment already claims.\n\ndoctor now uses pidfile_creatable() so its verdict matches what inject does.",
+      "tree": {
+        "sha": "1e662e8d4dcbbc7ab08f376545645c11a68b80df",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/1e662e8d4dcbbc7ab08f376545645c11a68b80df"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/6640eed31897b8121b415ac47e19474808d0bfd4",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/6640eed31897b8121b415ac47e19474808d0bfd4",
+    "html_url": "https://github.com/Azathothas/psgen/commit/6640eed31897b8121b415ac47e19474808d0bfd4",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/6640eed31897b8121b415ac47e19474808d0bfd4/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "24d51772539045b743c48dd1228b32c86f686438",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/24d51772539045b743c48dd1228b32c86f686438",
+        "html_url": "https://github.com/Azathothas/psgen/commit/24d51772539045b743c48dd1228b32c86f686438"
+      }
+    ]
+  },
+  {
+    "sha": "a16e390b46ce5b100ce8032ea1612f3966016cee",
+    "node_id": "C_kwDOVnpTqNoAKGExNmUzOTBiNDZjZTViMTAwY2U4MDMyZWExNjEyZjM5NjYwMTZjZWU",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:03:32Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:03:32Z"
+      },
+      "message": "cli: reject stop --dry-run, let --local win, sort --table, and stop hiding things\n\n* --dry-run was parsed for every subcommand and never consulted by stop, so\n  `psgen stop --pidfile FILE --dry-run` killed the run. A command that reads\n  as a preview must not be destructive; reject it like --force on a non-stop\n  command.\n\n* --local and --utc-offset were both applied, so START was shifted twice when\n  the system timezone is not UTC. localtime_r() converted a timestamp that had\n  already been moved by offset_min. --local now overrides --utc-offset, and\n  the help says so.\n\n* inject --table rendered rows in status-pipe arrival order, so a just-spawned\n  table was shuffled. Sort by PID, as ps aux and table --live do.\n\n* A family that cannot supply -n returned fewer rows silently, and a family\n  with one repeatable template padded the count with unlimited duplicates of\n  it. Warn on stderr when the count cannot be met. The generator itself is\n  unchanged: whether to short-return, error, or mark templates repeatable is\n  a design decision, and this only removes the silence.\n\n* --create-users with --no-root/--no-user and --mem-cap/--phys-cap with\n  --no-mem printed nothing; they now warn that they cannot take effect.\n\n* The reduced-capability line fired for capabilities the caller had disabled\n  (--no-tty still said pty=no). Condition it on what was asked for.\n\n* When no pidfile is written the summary now lists the temp directories that\n  will be left behind, instead of only advising --pidfile.\n\n* Help text: the 4 MiB --mem-cap floor, the --local/--utc-offset precedence,\n  the seed's real scope, -p's scope for list, --verify with --no-mem, the\n  --phys-cap default, the --busy rule, the --mem-util range, and the\n  proc-self-only limit of a one-field pidfile line.\n\n* pidfile_error() blamed a missing write permission for every failure past the\n  parent checks. Distinguish \"the name cannot be created\" (NAME_MAX) from\n  \"the parent is not writable\".",
+      "tree": {
+        "sha": "2e1dc972e8ffaaa8f04d461b0422ef2089390518",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/2e1dc972e8ffaaa8f04d461b0422ef2089390518"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/a16e390b46ce5b100ce8032ea1612f3966016cee",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/a16e390b46ce5b100ce8032ea1612f3966016cee",
+    "html_url": "https://github.com/Azathothas/psgen/commit/a16e390b46ce5b100ce8032ea1612f3966016cee",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/a16e390b46ce5b100ce8032ea1612f3966016cee/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "6640eed31897b8121b415ac47e19474808d0bfd4",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/6640eed31897b8121b415ac47e19474808d0bfd4",
+        "html_url": "https://github.com/Azathothas/psgen/commit/6640eed31897b8121b415ac47e19474808d0bfd4"
+      }
+    ]
+  },
+  {
+    "sha": "6c6a32a17bc86c3aab8d34b1c65021fa69198244",
+    "node_id": "C_kwDOVnpTqNoAKDZjNmEzMmExN2JjODZjM2FhYjhkMzRiMWM2NTAyMWZhNjkxOTgyNDQ",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:05:10Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:05:10Z"
+      },
+      "message": "gen: make a seed reproducible across seconds, and give postgres its parent back\n\n* Child rows drew their age with rng.range(5, uptime). Rng::below() is\n  next_u64() % n, and n grows by one every second, so the same seed produced a\n  different age on every run: `table -n 20 -s 42` differed in 32 lines two\n  seconds apart. Draw a fixed-point fraction and scale it by the span, so the\n  stream position and the distribution are unchanged and the age is stable to\n  within a second.\n\n* Every `postgres: 17/main:` row carried F_SESSION, which the code reads three\n  ways: boot-relative age, the `s` in STAT, and setsid(). PostgreSQL background\n  workers and client backends are children of the postmaster, not session\n  leaders, so table showed `Ss` and inject called setsid. Use F_LONG | F_CHILD\n  for the workers and F_CHILD for the clients, and map every\n  `postgres: 17/main:` row to the postmaster in parent_index().",
+      "tree": {
+        "sha": "2bc55e774fcaf32215b0665143694630da84c83b",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/2bc55e774fcaf32215b0665143694630da84c83b"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/6c6a32a17bc86c3aab8d34b1c65021fa69198244",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/6c6a32a17bc86c3aab8d34b1c65021fa69198244",
+    "html_url": "https://github.com/Azathothas/psgen/commit/6c6a32a17bc86c3aab8d34b1c65021fa69198244",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/6c6a32a17bc86c3aab8d34b1c65021fa69198244/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "a16e390b46ce5b100ce8032ea1612f3966016cee",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/a16e390b46ce5b100ce8032ea1612f3966016cee",
+        "html_url": "https://github.com/Azathothas/psgen/commit/a16e390b46ce5b100ce8032ea1612f3966016cee"
+      }
+    ]
+  },
+  {
+    "sha": "5c403ba15257d527711d186ac612c38a0e634168",
+    "node_id": "C_kwDOVnpTqNoAKDVjNDAzYmExNTI1N2Q1Mjc3MTFkMTg2YWM2MTJjMzhhMGU2MzQxNjg",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:05:37Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:05:37Z"
+      },
+      "message": "table: round %MEM the way procps does, and name serial ports ttyS<N>\n\n* %MEM was truncated (rss * 1000 / mem_total), so 0.18% printed as 0.1 where ps\n  prints 0.2. 32 of 60 rows differed from round() before, 0 after. Add half a\n  unit before dividing.\n\n* tty_name() mapped every major-4 device above minor 63 to ttyN, so /dev/ttyS0\n  (4:64) rendered as tty64, which is not a device name on Linux. A serial\n  console or serial getty therefore showed a wrong TTY. Minor 64 and above is\n  ttyS(minor - 64).",
+      "tree": {
+        "sha": "ddeca5ff4624bd09046d53cfaa2aeba98d152551",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/ddeca5ff4624bd09046d53cfaa2aeba98d152551"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/5c403ba15257d527711d186ac612c38a0e634168",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/5c403ba15257d527711d186ac612c38a0e634168",
+    "html_url": "https://github.com/Azathothas/psgen/commit/5c403ba15257d527711d186ac612c38a0e634168",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/5c403ba15257d527711d186ac612c38a0e634168/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "6c6a32a17bc86c3aab8d34b1c65021fa69198244",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/6c6a32a17bc86c3aab8d34b1c65021fa69198244",
+        "html_url": "https://github.com/Azathothas/psgen/commit/6c6a32a17bc86c3aab8d34b1c65021fa69198244"
+      }
+    ]
+  },
+  {
+    "sha": "6f657e4f11b4867e838be63f627d02edd5309399",
+    "node_id": "C_kwDOVnpTqNoAKDZmNjU3ZTRmMTFiNDg2N2U4MzhiZTYzZjYyN2QwMmVkZDUzMDkzOTk",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:06:49Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:06:49Z"
+      },
+      "message": "check: keep the absolute path the command names; users: repair a group-only host\n\n* executable() reduced every command to its basename, and exists() then\n  searched five hardcoded directories, so an absolute path in the corpus that\n  exists outside /usr/bin, /bin, /usr/sbin, /sbin or /usr/local/bin was\n  reported missing. /usr/lib/bluetooth/bluetoothd exists on this host and was\n  reported missing; so is every /usr/lib/systemd and /usr/lib/postgresql path.\n  Keep the absolute path, and search PATH for bare names.\n\n* Both useradd attempts passed --user-group, which fails when the group exists\n  but the user does not, so --create-users could not repair such a host and\n  the stub ran as root. Add a third attempt that uses the existing group with\n  --gid <name>.",
+      "tree": {
+        "sha": "4dfb5a90f382d834f86f5a361e8251ccbebc6d0e",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/4dfb5a90f382d834f86f5a361e8251ccbebc6d0e"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/6f657e4f11b4867e838be63f627d02edd5309399",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/6f657e4f11b4867e838be63f627d02edd5309399",
+    "html_url": "https://github.com/Azathothas/psgen/commit/6f657e4f11b4867e838be63f627d02edd5309399",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/6f657e4f11b4867e838be63f627d02edd5309399/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "5c403ba15257d527711d186ac612c38a0e634168",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/5c403ba15257d527711d186ac612c38a0e634168",
+        "html_url": "https://github.com/Azathothas/psgen/commit/5c403ba15257d527711d186ac612c38a0e634168"
+      }
+    ]
+  },
+  {
+    "sha": "caaa9a5e8860bb4f182baf667e803f93e7586117",
+    "node_id": "C_kwDOVnpTqNoAKGNhYWE5YTVlODg2MGJiNGYxODJiYWY2NjdlODAzZjkzZTc1ODYxMTc",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:08:17Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:08:17Z"
+      },
+      "message": "stub: exec the magic link, not the text readlink returns; unit: a real target\n\n* A child stub that could not bind the template path exec'd the *text* of\n  readlink(\"/proc/self/exe\"). Inside a private mount namespace that text\n  renders relative to the namespace, so /proc/PID/exe showed a path that does\n  not exist outside it (the report saw /psgen/target/release/psgen), breaking\n  stop's identity check and the project's own check_injection test. Exec\n  /proc/self/exe instead: it resolves to the file the process is already\n  running and stays visible to the caller.\n\n* The unit ordered After=local-fs.target proc-fs-nets.target, and no such\n  target exists, so the ordering edge did nothing. Use sysinit.target, which\n  /proc genuinely depends on.",
+      "tree": {
+        "sha": "599e681e5b0effb8b24945b29de926eb90fb9715",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/599e681e5b0effb8b24945b29de926eb90fb9715"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/caaa9a5e8860bb4f182baf667e803f93e7586117",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/caaa9a5e8860bb4f182baf667e803f93e7586117",
+    "html_url": "https://github.com/Azathothas/psgen/commit/caaa9a5e8860bb4f182baf667e803f93e7586117",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/caaa9a5e8860bb4f182baf667e803f93e7586117/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "6f657e4f11b4867e838be63f627d02edd5309399",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/6f657e4f11b4867e838be63f627d02edd5309399",
+        "html_url": "https://github.com/Azathothas/psgen/commit/6f657e4f11b4867e838be63f627d02edd5309399"
+      }
+    ]
+  },
+  {
+    "sha": "6f9a57a84fb16b60527a0a479a3f8e371a47b627",
+    "node_id": "C_kwDOVnpTqNoAKDZmOWE1N2E4NGZiMTZiNjA1MjdhMGE0NzlhM2Y4ZTM3MWE0N2I2Mjc",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:08:37Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:08:37Z"
+      },
+      "message": "tests: regressions for the fixed defects, and require the PIDS section\n\ncheck_regressions() covers the seed, the pidfile header, stop --dry-run, the\nstop count, the seccomp verdict, check --binaries, %MEM rounding, the help\ntext, the unit target and --create-users. Each one fails at bf80156.\n\nbench/sand.sh read section(\"PIDS\") unconditionally but did not list PIDS in the\nrequired-section tuple, so a transcript without it raised AttributeError\ninstead of the intended \"missing section PIDS\".",
+      "tree": {
+        "sha": "6894bf0e8cdaaa02c53f22766237d064486eedd6",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/6894bf0e8cdaaa02c53f22766237d064486eedd6"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/6f9a57a84fb16b60527a0a479a3f8e371a47b627",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/6f9a57a84fb16b60527a0a479a3f8e371a47b627",
+    "html_url": "https://github.com/Azathothas/psgen/commit/6f9a57a84fb16b60527a0a479a3f8e371a47b627",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/6f9a57a84fb16b60527a0a479a3f8e371a47b627/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "caaa9a5e8860bb4f182baf667e803f93e7586117",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/caaa9a5e8860bb4f182baf667e803f93e7586117",
+        "html_url": "https://github.com/Azathothas/psgen/commit/caaa9a5e8860bb4f182baf667e803f93e7586117"
+      }
+    ]
+  },
+  {
+    "sha": "3c4eb103f360d03d3839e02376d356aebe4a92a7",
+    "node_id": "C_kwDOVnpTqNoAKDNjNGViMTAzZjM2MGQwM2QzODM5ZTAyMzc2ZDM1NmFlYmU0YTkyYTc",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:20:07Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:20:07Z"
+      },
+      "message": "tests: skip what the host cannot do instead of aborting the suite\n\ntests/smoke.sh aborted on three host properties that are normal in a container,\nnone of them psgen's fault, and each abort killed the whole suite so no later\ncheck ran at all:\n\n* a finite hard RLIMIT_FSIZE: limited() asked for a 1 GiB soft limit while the\n  hard limit was 953 MiB, and setrlimit refuses to raise soft above hard, so\n  preexec_fn raised SubprocessError. Clamp to the hard limit; 2048 MiB still\n  exceeds any limit the test can install.\n* no /dev/ptmx: the pty assertion failed even though `psgen doctor` correctly\n  reports pty DENY and inject reports the degradation. Skip it when doctor says\n  the host has no pty.\n* a PID 1 that does not reap: the --duration and --busy liveness checks used\n  os.kill(pid, 0), which succeeds for a zombie, so they could never pass. Use a\n  helper that treats a zombie as gone.\n\nBefore: the suite stopped at the first of the three. After: it runs to\ncompletion and prints \"invariants: ok / smoke: ok\" on this host.",
+      "tree": {
+        "sha": "bc405252f2bfb783ddec46ce0820df803a5bb40e",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/bc405252f2bfb783ddec46ce0820df803a5bb40e"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/3c4eb103f360d03d3839e02376d356aebe4a92a7",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/3c4eb103f360d03d3839e02376d356aebe4a92a7",
+    "html_url": "https://github.com/Azathothas/psgen/commit/3c4eb103f360d03d3839e02376d356aebe4a92a7",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/3c4eb103f360d03d3839e02376d356aebe4a92a7/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "6f9a57a84fb16b60527a0a479a3f8e371a47b627",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/6f9a57a84fb16b60527a0a479a3f8e371a47b627",
+        "html_url": "https://github.com/Azathothas/psgen/commit/6f9a57a84fb16b60527a0a479a3f8e371a47b627"
+      }
+    ]
+  },
+  {
+    "sha": "cfc5fb804c2cf705a81cc0374e6066ca8b41ddf2",
+    "node_id": "C_kwDOVnpTqNoAKGNmYzVmYjgwNGMyY2Y3MDVhODFjYzAzNzRlNjA2NmNhOGI0MWRkZjI",
+    "commit": {
+      "author": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T03:26:11Z"
+      },
+      "committer": {
+        "name": "Nemo",
+        "email": "328747105+Nemo-010@users.noreply.github.com",
+        "date": "2026-11-09T04:10:21Z"
+      },
+      "message": "qa: fixes for the third beta-test round\n\nCloses #1, #2, #6, #14, #15, #18, #19, #21, #26.\nRefs #4, #16, #17, #20, #22, #27 (partially addressed; the rest needs a decision).\n\nNine commits, one per area. Every claim below was re-verified against a clean\nbuild of bf80156 on this machine, not taken from the report.\n\n## What this fixes\n\n| Issue | Commit | Verified by |\n| --- | --- | --- |\n| #14 `inject --pidfile` panics after spawning when `getrandom` fails | `inject:` | seccomp launcher denying `getrandom`: rc 134 + orphaned stubs before, rc 0 + a stoppable run after |\n| #1 psgen's own pidfile is refused on the next run | `probe:` | second `inject` against the same path: rc 2 before, rc 0 after; `doctor` DENY before, ALLOW after |\n| #26 a pidfile basename near `NAME_MAX` fails after spawning | `probe:` | 240-byte basename: 2 stubs spawned and rc 1 before, exit 2 before spawning after |\n| #19 `doctor` reports `seccomp_user_notif blocked` on a normal kernel | `probe:` | `EFAULT` from a null filter program: `blocked` before, `reachable` after |\n| seccomp `KILL_PROCESS` kills `psgen` itself | `probe:` | `memfd_create`/`bpf`/`seccomp` kill filter: `doctor` and `inject --dry-run` rc 159 before, rc 0 after |\n| #15 `stop --dry-run` kills the run | `cli:` | `stop --dry-run` -> rc 2, nothing signalled |\n| #2 the same seed is not reproducible a second later | `gen:` | `table -n 20 -s 42` twice, 2 s apart: 32 lines differ before, identical after |\n| #18 postgres workers are session leaders | `gen:` | `inject -f db`: `Ss` with `sid == pid` before, the postmaster's session after |\n| #21 `check --binaries` reports an existing path as missing | `check:` | `/usr/lib/bluetooth/bluetoothd` exists and was reported missing; not after |\n| #6 the test suite aborts on a constrained host | `tests:` | before: `SubprocessError` at the first check; after: `invariants: ok`, `smoke: ok` |\n\n## Partially addressed, on purpose\n\n- **#4** -- the subtree count is fixed (40-row stop: `33/35/34` before, `40/40/40`\n  after, three runs each) and an unreadable live PID now counts as failed instead\n  of skipped. The *zombie* half is not fixed: a `Z` still accepts a signal, and\n  whether `stopped` should exclude it changes what the count means.\n- **#17** -- `--local` now overrides `--utc-offset` (`TZ=Asia/Kolkata`: local+120\n  gave 09:50 before, 07:50 after). The unbounded `--utc-offset` is not fixed.\n- **#16** -- the shortfall is now warned about instead of silent; the padding and\n  the count semantics are untouched.\n- **#22** -- the help now says a one-field line is proc-self only; the form itself\n  is unchanged.\n- **#27** -- `After=sysinit.target` instead of a target that does not exist. The\n  restart itself still depends on #1 (which this closes) and on `ExecStop=-`.\n\n## Not touched, because the fix is a design decision\n\n#20 (proposed patch, **not run as root here** -- treat as a proposal), #23\n`load --mem-util`, #24 `log --lines`, #25 fd 3 config trust, #28 impossible values.\nEach has the trade-offs written down in its issue.\n\n## Notes for review\n\n- This is the QA bundle's combined patch, unmodified in substance, split into\n  commits by area. `git diff main..HEAD` differs from that patch only by the three\n  `tests/invariants.py` hunks for #6 -- added because the bundle's patch alone still\n  aborts the suite on a host with a finite hard `RLIMIT_FSIZE` or no `/dev/ptmx`.\n  That is worth knowing if you were planning to apply the patch as-is.\n- Each commit builds on its own (`cargo build --release` at every step), so it\n  bisects.\n- `cargo clippy --release` reports the same 23 warnings as `bf80156`; this adds\n  none. `cargo fmt --check` still fails, identically before and after -- the hits\n  are pre-existing and in files this does not touch.\n- Two commits change generated output on purpose: `%MEM` now rounds like procps,\n  and postgres rows become children of the postmaster. Both move golden output and\n  both are argued in their issues.\n\nWe aim to provide the software that shapes the world of tomorrow.",
+      "tree": {
+        "sha": "bc405252f2bfb783ddec46ce0820df803a5bb40e",
+        "url": "https://api.github.com/repos/Azathothas/psgen/git/trees/bc405252f2bfb783ddec46ce0820df803a5bb40e"
+      },
+      "url": "https://api.github.com/repos/Azathothas/psgen/git/commits/cfc5fb804c2cf705a81cc0374e6066ca8b41ddf2",
+      "comment_count": 0,
+      "verification": {
+        "verified": false,
+        "reason": "unsigned",
+        "signature": null,
+        "payload": null,
+        "verified_at": null
+      }
+    },
+    "url": "https://api.github.com/repos/Azathothas/psgen/commits/cfc5fb804c2cf705a81cc0374e6066ca8b41ddf2",
+    "html_url": "https://github.com/Azathothas/psgen/commit/cfc5fb804c2cf705a81cc0374e6066ca8b41ddf2",
+    "comments_url": "https://api.github.com/repos/Azathothas/psgen/commits/cfc5fb804c2cf705a81cc0374e6066ca8b41ddf2/comments",
+    "author": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "committer": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "parents": [
+      {
+        "sha": "3c4eb103f360d03d3839e02376d356aebe4a92a7",
+        "url": "https://api.github.com/repos/Azathothas/psgen/commits/3c4eb103f360d03d3839e02376d356aebe4a92a7",
+        "html_url": "https://github.com/Azathothas/psgen/commit/3c4eb103f360d03d3839e02376d356aebe4a92a7"
+      }
+    ]
+  }
+]

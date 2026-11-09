@@ -1,0 +1,49 @@
+[
+  {
+    "url": "https://api.github.com/repos/Azathothas/psgen/issues/comments/6731656072",
+    "html_url": "https://github.com/Azathothas/psgen/issues/6#issuecomment-6731656072",
+    "issue_url": "https://api.github.com/repos/Azathothas/psgen/issues/6",
+    "id": 6731656072,
+    "node_id": "IC_kwDOVm5QNM8AAAABkTzriA",
+    "user": {
+      "login": "Nemo-010",
+      "id": 328747105,
+      "node_id": "U_kgDOE5hIYQ",
+      "avatar_url": "https://avatars.githubusercontent.com/u/328747105?v=4",
+      "gravatar_id": "",
+      "url": "https://api.github.com/users/Nemo-010",
+      "html_url": "https://github.com/Nemo-010",
+      "followers_url": "https://api.github.com/users/Nemo-010/followers",
+      "following_url": "https://api.github.com/users/Nemo-010/following{/other_user}",
+      "gists_url": "https://api.github.com/users/Nemo-010/gists{/gist_id}",
+      "starred_url": "https://api.github.com/users/Nemo-010/starred{/owner}{/repo}",
+      "subscriptions_url": "https://api.github.com/users/Nemo-010/subscriptions",
+      "organizations_url": "https://api.github.com/users/Nemo-010/orgs",
+      "repos_url": "https://api.github.com/users/Nemo-010/repos",
+      "events_url": "https://api.github.com/users/Nemo-010/events{/privacy}",
+      "received_events_url": "https://api.github.com/users/Nemo-010/received_events",
+      "type": "User",
+      "user_view_type": "public",
+      "site_admin": false
+    },
+    "created_at": "2026-11-09T03:39:20Z",
+    "updated_at": "2026-11-09T04:00:55Z",
+    "body": "All three patches verified here, in the same order you hit them: the suite aborts at 6a, then at 6b, then at 6c, and with all three it runs to completion. That host is identical in the relevant ways to yours \u2014 hard `RLIMIT_FSIZE` 953 MiB, no `/dev/ptmx`, non-reaping PID 1.\n\n```\nbefore:   subprocess.SubprocessError: Exception occurred in preexec_fn\n+ 6a:     FAIL: no injected process acquired a pty\n+ 6a+6b:   FAIL: --busy --duration 2 pid 2070 survived\n+ all 3:   free-space guard not reachable: RLIMIT_FSIZE is 953 MiB\n          root checks skipped: no passwordless sudo\n          invariants: ok\n          smoke: ok\n```\n\nTwo notes on the patches:\n\n- 6b's predicate has to follow #8. With the current single-key shape, the check is `\"pty\":{\"ok\":true` after stripping spaces, which is what I used; once #8 becomes `{\"name\":\"pty\",\"ok\":\u2026}` it has to be `\"name\":\"pty\",\"ok\":true`. Worth accepting both shapes so the two issues do not have to land in order.\n- 6c's `alive()` is also the right shape for the `stop` accounting in #4: a `Z` is gone for both purposes.\n\nThese three are the last commit of the branch `qa/verified-fixes` in `Nemo-010/psgen`, because without them the report's own patch still aborts the suite on this kind of host \u2014 so they are a prerequisite for any green CI run, not a nicety.",
+    "author_association": "NONE",
+    "pin": null,
+    "reactions": {
+      "url": "https://api.github.com/repos/Azathothas/psgen/issues/comments/6731656072/reactions",
+      "total_count": 0,
+      "+1": 0,
+      "-1": 0,
+      "laugh": 0,
+      "hooray": 0,
+      "confused": 0,
+      "heart": 0,
+      "rocket": 0,
+      "eyes": 0
+    },
+    "performed_via_github_app": null,
+    "minimized": null
+  }
+]

@@ -1,0 +1,7 @@
+https://api.github.com/repos/Azathothas/psgen/releases
+https://api.github.com/repos/Azathothas/psgen/tags
+https://api.github.com/repos/Azathothas/psgen/branches
+https://api.github.com/repos/Azathothas/psgen/commits
+https://api.github.com/repos/Nemo-010/psgen
+https://api.github.com/repos/Nemo-010/psgen/pulls/29
+https://api.github.com/repos/Nemo-010/psgen/branches
