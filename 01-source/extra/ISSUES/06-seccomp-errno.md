@@ -1,0 +1,113 @@
+`psgen doctor` reports `seccomp_user_notif blocked` on every normal Linux kernel. The probe treats `EFAULT` — the expected result for a null filter program — as "blocked", and treats `ENOSYS` (no seccomp in the kernel) as "reachable". Both verdicts are inverted.
+
+## What happens
+
+On this host, which has seccomp and allows the call:
+
+```
+$ python3 -c 'import ctypes; l=ctypes.CDLL("libc.so.6",use_errno=True); \
+              print(l.syscall(317,1,8,None), ctypes.get_errno())'
+-1 14
+```
+
+`errno 14` is `EFAULT`: the kernel reached `seccomp(SECCOMP_SET_MODE_FILTER,
+SECCOMP_FILTER_FLAG_NEW_LISTENER, NULL)` and rejected the null program. That is
+exactly the "the syscall is reachable" outcome.
+
+```
+$ psgen doctor | grep seccomp_user
+  seccomp_user_notif	blocked                    <- wrong
+```
+
+The whole `probe` block is affected: `bpf` has the same shape, and `inject`'s
+`--elevate` decision and the reduced-capability summary both read these verdicts.
+
+## Why
+
+`src/sys.rs`:
+
+```rust
+pub fn seccomp_user_notif() -> bool {
+    let r = unsafe {
+        libc::syscall(libc::SYS_seccomp, 1 as libc::c_int, 0x8 as libc::c_int,
+                      core::ptr::null::<libc::c_void>())
+    };
+    let err = last_error().raw_os_error();
+    r != -1 || !matches!(err, Some(libc::EPERM) | Some(libc::EFAULT))
+}
+```
+
+`EFAULT` is in the "blocked" set, so a reachable syscall reports blocked. `ENOSYS`
+is not in it, so a kernel without seccomp reports reachable. `EACCES` (a policy
+that returns `SECCOMP_RET_ERRNO(EACCES)`) is also missing from the blocked set.
+
+The doc comment above the function states the intended rule correctly:
+
+> A null program is refused with `EFAULT` or `EINVAL` after the kernel has
+> inspected the arguments, which means the operation is reachable. `EPERM`,
+> `EACCES` and `ENOSYS` mean a policy or the kernel blocks it before that.
+
+The code does not implement the comment.
+
+## Patch (verified)
+
+```diff
+--- a/src/sys.rs
++++ b/src/sys.rs
+@@ -128,8 +128,9 @@ pub fn bpf_allowed() -> bool {
+-/// A null program is refused; the errno says whether the call was blocked
+-/// before the argument was inspected.
++/// A null program is refused with `EFAULT` or `EINVAL` after the kernel has
++/// inspected the arguments, which means the operation is reachable. `EPERM`,
++/// `EACCES` and `ENOSYS` mean a policy or the kernel blocks it before that.
+ pub fn seccomp_user_notif() -> bool {
+@@
+-    let err = last_error().raw_os_error();
+-    r != -1 || !matches!(err, Some(libc::EPERM) | Some(libc::EFAULT))
++    if r != -1 {
++        return true;
++    }
++    !matches!(
++        last_error().raw_os_error(),
++        Some(libc::EPERM) | Some(libc::EACCES) | Some(libc::ENOSYS)
++    )
+ }
+```
+
+Verified:
+
+```
+$ psgen doctor | grep seccomp_user
+  seccomp_user_notif	reachable
+```
+
+`bpf_allowed()` has the same defect one function up: it treats only `EPERM` as
+blocked, so `EACCES`, `ENOSYS` and `EINVAL` are all reported as "allowed". Apply the
+same shape there.
+
+## Related: the verdict is a boolean, not an errno
+
+`doctor` prints `blocked` or `reachable` with no errno, so a caller cannot tell
+"the kernel has no seccomp" from "a policy denies it" from "the call is malformed".
+The `Check` struct already carries `errno` for the capability table; the posture
+block should carry it too, or print the errno in the detail column.
+
+## Test that would have caught it
+
+```python
+j = json.loads(run(["doctor", "--json"]).stdout)
+val = j["probe"]["seccomp_user_notif"]
+# on a kernel with seccomp and no filter installed, the call is reachable
+if val != "reachable":
+    fail(f"seccomp_user_notif reported {val!r} on a normal kernel")
+```
+
+The existing `check_regressions()` in the report's patch only asserts the value is
+one of the two strings, which cannot fail.
+
+## Environment
+
+`bf80156` built with `cargo 1.99.1`, x86-64, Linux 7.2.11, unprivileged uid 966,
+`seccomp_mode` 2 in `/proc/self/status`. `EFAULT` from a null filter program is the
+same on every architecture and every kernel that has `SECCOMP_FILTER_FLAG_NEW_LISTENER`
+(5.0+).
