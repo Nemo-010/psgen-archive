@@ -14,6 +14,10 @@
         "refs/heads/qa/verified-fixes",
         "refs/tags/v0.0.1-beta.1"
       ]
+    },
+    "github.com/Nemo-010/psgen-archive": {
+      "snapshot": "5c9a8fbaf215ab3805e5502ee64c063aaab2af03",
+      "visit": 1
     }
   },
   "github": {
@@ -34,7 +38,13 @@
       "p0OvDijBNx9IOLrQ9m7Fvub466CMiScSpvV53Gyqb7w",
       "5bH152mKvPc7KIBVIXDzMZg7pfxKKbsM1vklYZT2rKE"
     ],
-    "verified": true
+    "verified": true,
+    "psgen_archive_parts": [
+      "cbh1o2vVVW0hz9-nuNTacMaXT1AcyYECqSZNADx6Q0A",
+      "f7RzWu77cQ0iFlnyVrJYDdkdqFVepdV4cEQBUZLL3ag",
+      "I7usVEe75YLREQ5WohQsIQviyt1IQMNg0zbLLXdHWX8"
+    ],
+    "note": "Free tier caps each git pack, so the archive repo went up as three parts; all three verified on arweave.net"
   },
   "radicle": {
     "published": false,
