@@ -29,7 +29,9 @@
     "npub": "npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr",
     "psgen": "nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen",
     "psgen_archive": "nostr://npub1a8hwrjy5lmm56v9nf556gtveyuz0vndl0ju6jlkuedp224wym9es5p5flr/relay.ngit.dev/psgen-archive",
-    "verified": true
+    "verified": true,
+    "psgen_verified": true,
+    "psgen_archive_verified": true
   },
   "arweave": {
     "wallet": "nQ4e9Et0kStCwbQRZd7BFWMdWaxI99lpOPxylu7uK1I",
@@ -40,11 +42,12 @@
     ],
     "verified": true,
     "psgen_archive_parts": [
-      "cbh1o2vVVW0hz9-nuNTacMaXT1AcyYECqSZNADx6Q0A",
-      "f7RzWu77cQ0iFlnyVrJYDdkdqFVepdV4cEQBUZLL3ag",
-      "I7usVEe75YLREQ5WohQsIQviyt1IQMNg0zbLLXdHWX8"
+      "DwI8k0aJ3iU4middNOisoMTRUN6O7fwDiNaI5te7Iwg",
+      "DywZG4Y5fSD-U7VDNShllPES87G7FnYNagcvP7Vo1t4",
+      "JMqjGCGRZXY2IufpmWhbQ-Oa4V8tsRDuAcwRWLhD8xE"
     ],
-    "note": "Free tier caps each git pack, so the archive repo went up as three parts; all three verified on arweave.net"
+    "note": "Free tier caps each git pack, so the archive repo went up as three parts; all three verified on arweave.net",
+    "psgen_archive_verified": true
   },
   "radicle": {
     "published": false,
@@ -61,5 +64,10 @@
   "arquivo_pt": {
     "submitted": 39,
     "accepted": 39
+  },
+  "local_zip": {
+    "path": "psgen-archive-dossier-20261109.zip",
+    "entries": 215,
+    "sha256sums": "SHA256SUMS.txt (215/215 verified)"
   }
 }
